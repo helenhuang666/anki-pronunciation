@@ -66,7 +66,7 @@ audio {
 
   <div id="word"></div>
 
-  <button id="recordBtn">按住录音</button>
+  <button id="recordBtn">🎤 开始录音</button>
 
   <div id="status">准备就绪</div>
 
@@ -90,47 +90,45 @@ const recordBtn = document.getElementById("recordBtn");
 const status = document.getElementById("status");
 const player = document.getElementById("player");
 
-recordBtn.addEventListener("mousedown", startRecord);
-recordBtn.addEventListener("touchstart", startRecord);
-recordBtn.addEventListener("mouseup", stopRecord);
-recordBtn.addEventListener("touchend", stopRecord);
+let recording = false;          // 新增状态标志
 
-async function startRecord(e) {
-  e.preventDefault();
+recordBtn.onclick = async () => {   // 唯一的点击事件
+  if (!recording) {
+    await startRecording();
+    recordBtn.innerText = "⏹ 停止录音";
+    recording = true;
+  } else {
+    stopRecording();
+    recordBtn.innerText = "🎤 开始录音";
+    recording = false;
+  }
+};
+
+async function startRecording() {
   audioData = [];
-
   audioContext = new (window.AudioContext || window.webkitAudioContext)({
     sampleRate: 16000
   });
-
   stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   input = audioContext.createMediaStreamSource(stream);
-
   processor = audioContext.createScriptProcessor(4096, 1, 1);
   processor.onaudioprocess = ev => {
     audioData.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
   };
-
   input.connect(processor);
   processor.connect(audioContext.destination);
-
   status.innerText = "录音中…";
 }
 
-async function stopRecord(e) {
-  e.preventDefault();
+function stopRecording() {
   if (!audioContext) return;
-
   processor.disconnect();
   input.disconnect();
   stream.getTracks().forEach(t => t.stop());
-
   const wavBlob = encodeWAV(audioData, audioContext.sampleRate);
   player.src = URL.createObjectURL(wavBlob);
-
   status.innerText = "测评中…";
-  await sendToAzure(wavBlob);
-
+  sendToAzure(wavBlob);
   audioContext.close();
   audioContext = null;
 }
@@ -140,18 +138,14 @@ function encodeWAV(buffers, sampleRate) {
   let length = buffers.reduce((s,b)=>s+b.length,0);
   let pcm = new Int16Array(length);
   let offset = 0;
-
   buffers.forEach(b=>{
     for(let i=0;i<b.length;i++,offset++){
       pcm[offset] = Math.max(-1,Math.min(1,b[i]))*0x7fff;
     }
   });
-
   const buffer = new ArrayBuffer(44 + pcm.length*2);
   const view = new DataView(buffer);
-
   function write(o,s){ for(let i=0;i<s.length;i++) view.setUint8(o+i,s.charCodeAt(i)); }
-
   write(0,"RIFF");
   view.setUint32(4,36+pcm.length*2,true);
   write(8,"WAVE");
@@ -165,10 +159,8 @@ function encodeWAV(buffers, sampleRate) {
   view.setUint16(34,16,true);
   write(36,"data");
   view.setUint32(40,pcm.length*2,true);
-
   let p=44;
   pcm.forEach(v=>{ view.setInt16(p,v,true); p+=2; });
-
   return new Blob([view],{type:"audio/wav"});
 }
 
@@ -176,27 +168,22 @@ function encodeWAV(buffers, sampleRate) {
 async function sendToAzure(wavBlob){
   const scoresDiv = document.getElementById("scores");
   scoresDiv.innerHTML = "";
-
   try{
     const res = await fetch(
       "https://anki-pronunciation.onrender.com/assess?text=" +
       encodeURIComponent(word),
       { method:"POST", body:wavBlob }
     );
-
     const data = await res.json();
     const pa = data.NBest?.[0]?.PronunciationAssessment;
-
     if(!pa){
       status.innerText = "测评失败";
       return;
     }
-
     const acc = pa.AccuracyScore ?? 0;
     const flu = pa.FluencyScore ?? 0;
     const comp = pa.CompletenessScore ?? 0;
     const total = Math.round((acc + flu + comp) / 3);
-
     status.innerText = "测评完成";
     scoresDiv.innerHTML = `
       总分：${total}<br>
