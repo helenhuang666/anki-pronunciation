@@ -1,96 +1,128 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Pronunciation Practice</title>
+  <meta charset="UTF-8" />
+  <title>Pronunciation Practice</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<style>
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f5f7fa;
-  margin: 0;
-  padding: 20px;
-}
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f6f8fb;
+      margin: 0;
+      padding: 16px;
+    }
 
-.card {
-  background: white;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  max-width: 400px;
-  margin: auto;
-}
+    .card {
+      max-width: 420px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.08);
+    }
 
-.word {
-  font-size: 28px;
-  text-align: center;
-  margin-bottom: 20px;
-}
+    #word {
+      font-size: 28px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
 
-button {
-  width: 100%;
-  padding: 14px;
-  font-size: 16px;
-  border: none;
-  border-radius: 8px;
-  background: #1976d2;
-  color: white;
-}
+    button {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: none;
+      background: #1976ff;
+      color: #fff;
+    }
 
-button:active {
-  background: #0d47a1;
-}
+    button:active {
+      background: #1258c7;
+    }
 
-#status {
-  text-align: center;
-  margin-top: 15px;
-  font-size: 14px;
-  color: #555;
-}
+    #status {
+      text-align: center;
+      margin: 12px 0;
+      color: #555;
+    }
 
-audio {
-  width: 100%;
-  margin-top: 12px;
-  accent-color: #1976d2;
-}
-</style>
+    audio {
+      width: 100%;
+      margin-top: 10px;
+      accent-color: #1976ff;
+    }
+
+    #scores {
+      margin-top: 14px;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+  </style>
 </head>
 
 <body>
-<div class="card">
-  <div id="word" class="word">example</div>
+  <div class="card">
+    <div id="word">example</div>
 
-  <button id="recordBtn">按住录音</button>
+    <button id="recordBtn">按住录音，松开测评</button>
 
-  <audio id="player" controls style="display:none;"></audio>
+    <div id="status">准备就绪</div>
 
-  <div id="status">准备录音</div>
-<div id="scores" style="margin-top:12px; font-size:14px; line-height:1.6;"></div>
-</div>
+    <audio id="player" controls></audio>
+
+    <div id="scores"></div>
+  </div>
 
 <script>
-/* ========= ① 发送到 Azure 的函数（在外面） ========= */
+let mediaRecorder;
+let chunks = [];
+let stream;
+
+const recordBtn = document.getElementById("recordBtn");
+const status = document.getElementById("status");
+const player = document.getElementById("player");
+
+async function initMic() {
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+}
+
+recordBtn.addEventListener("touchstart", startRecord);
+recordBtn.addEventListener("mousedown", startRecord);
+
+recordBtn.addEventListener("touchend", stopRecord);
+recordBtn.addEventListener("mouseup", stopRecord);
+
+async function startRecord(e) {
+  e.preventDefault();
+  if (!stream) await initMic();
+
+  chunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.start();
+
+  mediaRecorder.ondataavailable = e => chunks.push(e.data);
+
+  status.innerText = "录音中…";
+}
+
+async function stopRecord(e) {
+  e.preventDefault();
+  if (!mediaRecorder || mediaRecorder.state !== "recording") return;
+
+  mediaRecorder.stop();
+
+  mediaRecorder.onstop = async () => {
+    const audioBlob = new Blob(chunks, { type: "audio/webm" });
+    player.src = URL.createObjectURL(audioBlob);
+
+    await sendToAzure(audioBlob);
+  };
+}
+
 async function sendToAzure(audioBlob) {
   const word = document.getElementById("word").innerText;
-  const status = document.getElementById("status");
-
-  status.innerText = "测评中…";
-
-  try {
-    const res = await fetch(
-      "http://192.168.1.16:3000/assess?text=" + encodeURIComponent(word),
-      {
-        method: "POST",
-        body: audioBlob
-      }
-    );
-
-    const data = await res.json();
-
-async function sendToAzure(audioBlob) {
-  const word = document.getElementById("word").innerText;
-  const status = document.getElementById("status");
   const scoresDiv = document.getElementById("scores");
 
   status.innerText = "测评中…";
@@ -98,7 +130,8 @@ async function sendToAzure(audioBlob) {
 
   try {
     const res = await fetch(
-      "http://localhost:3000/assess?text=" + encodeURIComponent(word),
+      "https://anki-pronunciation.onrender.com/assess?text=" +
+        encodeURIComponent(word),
       {
         method: "POST",
         body: audioBlob
@@ -106,68 +139,18 @@ async function sendToAzure(audioBlob) {
     );
 
     const data = await res.json();
-
     const pa = data.NBest[0].PronunciationAssessment;
 
     status.innerText = "测评完成";
-
     scoresDiv.innerHTML = `
       <strong>总分：</strong>${Math.round(pa.PronunciationScore)}<br>
-      Accuracy（准确度）：${Math.round(pa.AccuracyScore)}<br>
-      Fluency（流利度）：${Math.round(pa.FluencyScore)}<br>
-      Completeness（完整度）：${Math.round(pa.CompletenessScore)}
+      Accuracy：${Math.round(pa.AccuracyScore)}<br>
+      Fluency：${Math.round(pa.FluencyScore)}<br>
+      Completeness：${Math.round(pa.CompletenessScore)}
     `;
-  } catch (e) {
+  } catch (err) {
+    console.error(err);
     status.innerText = "测评失败，请重试";
-  }
-}
-
-/* ========= ② 录音逻辑 ========= */
-let mediaRecorder;
-let chunks = [];
-
-const recordBtn = document.getElementById("recordBtn");
-const player = document.getElementById("player");
-const status = document.getElementById("status");
-
-navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-  mediaRecorder = new MediaRecorder(stream);
-
-  mediaRecorder.ondataavailable = e => {
-    chunks.push(e.data);
-  };
-
-  mediaRecorder.onstop = () => {
-    const audioBlob = new Blob(chunks, { type: "audio/mp4" });
-    chunks = [];
-
-    const url = URL.createObjectURL(audioBlob);
-    player.src = url;
-    player.style.display = "block";
-
-    sendToAzure(audioBlob);   // ⭐ 核心：这里调用
-  };
-});
-
-/* ========= ③ 按住录音 / 松开停止 ========= */
-recordBtn.addEventListener("touchstart", startRecord);
-recordBtn.addEventListener("mousedown", startRecord);
-
-recordBtn.addEventListener("touchend", stopRecord);
-recordBtn.addEventListener("mouseup", stopRecord);
-
-function startRecord(e) {
-  e.preventDefault();
-  if (mediaRecorder && mediaRecorder.state === "inactive") {
-    status.innerText = "录音中…";
-    mediaRecorder.start();
-  }
-}
-
-function stopRecord(e) {
-  e.preventDefault();
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
   }
 }
 </script>
