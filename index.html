@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pronunciation Practice</title>
+
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5f7fa;
+  margin: 0;
+  padding: 20px;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  max-width: 400px;
+  margin: auto;
+}
+
+.word {
+  font-size: 28px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+button {
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  border: none;
+  border-radius: 8px;
+  background: #1976d2;
+  color: white;
+}
+
+button:active {
+  background: #0d47a1;
+}
+
+#status {
+  text-align: center;
+  margin-top: 15px;
+  font-size: 14px;
+  color: #555;
+}
+
+audio {
+  width: 100%;
+  margin-top: 12px;
+  accent-color: #1976d2;
+}
+</style>
+</head>
+
+<body>
+<div class="card">
+  <div id="word" class="word">example</div>
+
+  <button id="recordBtn">按住录音</button>
+
+  <audio id="player" controls style="display:none;"></audio>
+
+  <div id="status">准备录音</div>
+<div id="scores" style="margin-top:12px; font-size:14px; line-height:1.6;"></div>
+</div>
+
+<script>
+/* ========= ① 发送到 Azure 的函数（在外面） ========= */
+async function sendToAzure(audioBlob) {
+  const word = document.getElementById("word").innerText;
+  const status = document.getElementById("status");
+
+  status.innerText = "测评中…";
+
+  try {
+    const res = await fetch(
+      "http://192.168.1.16:3000/assess?text=" + encodeURIComponent(word),
+      {
+        method: "POST",
+        body: audioBlob
+      }
+    );
+
+    const data = await res.json();
+
+async function sendToAzure(audioBlob) {
+  const word = document.getElementById("word").innerText;
+  const status = document.getElementById("status");
+  const scoresDiv = document.getElementById("scores");
+
+  status.innerText = "测评中…";
+  scoresDiv.innerHTML = "";
+
+  try {
+    const res = await fetch(
+      "http://localhost:3000/assess?text=" + encodeURIComponent(word),
+      {
+        method: "POST",
+        body: audioBlob
+      }
+    );
+
+    const data = await res.json();
+
+    const pa = data.NBest[0].PronunciationAssessment;
+
+    status.innerText = "测评完成";
+
+    scoresDiv.innerHTML = `
+      <strong>总分：</strong>${Math.round(pa.PronunciationScore)}<br>
+      Accuracy（准确度）：${Math.round(pa.AccuracyScore)}<br>
+      Fluency（流利度）：${Math.round(pa.FluencyScore)}<br>
+      Completeness（完整度）：${Math.round(pa.CompletenessScore)}
+    `;
+  } catch (e) {
+    status.innerText = "测评失败，请重试";
+  }
+}
+
+/* ========= ② 录音逻辑 ========= */
+let mediaRecorder;
+let chunks = [];
+
+const recordBtn = document.getElementById("recordBtn");
+const player = document.getElementById("player");
+const status = document.getElementById("status");
+
+navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+  mediaRecorder = new MediaRecorder(stream);
+
+  mediaRecorder.ondataavailable = e => {
+    chunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = () => {
+    const audioBlob = new Blob(chunks, { type: "audio/mp4" });
+    chunks = [];
+
+    const url = URL.createObjectURL(audioBlob);
+    player.src = url;
+    player.style.display = "block";
+
+    sendToAzure(audioBlob);   // ⭐ 核心：这里调用
+  };
+});
+
+/* ========= ③ 按住录音 / 松开停止 ========= */
+recordBtn.addEventListener("touchstart", startRecord);
+recordBtn.addEventListener("mousedown", startRecord);
+
+recordBtn.addEventListener("touchend", stopRecord);
+recordBtn.addEventListener("mouseup", stopRecord);
+
+function startRecord(e) {
+  e.preventDefault();
+  if (mediaRecorder && mediaRecorder.state === "inactive") {
+    status.innerText = "录音中…";
+    mediaRecorder.start();
+  }
+}
+
+function stopRecord(e) {
+  e.preventDefault();
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+  }
+}
+</script>
+</body>
+</html>

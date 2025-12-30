@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+
+<title>Pronunciation</title>
+
+<style>
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #fff;
+}
+
+.card {
+  text-align: center;
+  padding: 24px;
+}
+
+.word {
+  font-size: 40px;
+  margin-bottom: 24px;
+}
+
+button {
+  font-size: 18px;
+  padding: 14px 26px;
+  margin: 10px;
+  border-radius: 12px;
+  border: none;
+  background: #3478f6;
+  color: white;
+}
+
+button:disabled {
+  background: #ccc;
+}
+
+.status {
+  margin-top: 12px;
+  color: #666;
+  font-size: 14px;
+}
+</style>
+</head>
+
+<body>
+<div class="card">
+  <div class="word" id="word">word</div>
+
+  <button id="recordBtn">🎤 开始录音（3 秒）</button>
+  <br>
+  <button id="playBtn" disabled>▶️ 播放我的录音</button>
+  <audio id="player" controls preload="metadata"
+  <audio id="player" controls playsinline></audio>
+
+  <div class="status" id="status">未开始</div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const word = params.get("word") || "";
+document.getElementById("word").innerText = word;
+
+let mediaRecorder;
+let chunks = [];
+let audioBlob = null;
+
+const recordBtn = document.getElementById("recordBtn");
+const playBtn = document.getElementById("playBtn");
+const status = document.getElementById("status");
+
+recordBtn.onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    mediaRecorder = new MediaRecorder(stream);
+    chunks = [];
+
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+
+    mediaRecorder.onstop = () => {
+      audioBlob = new Blob(chunks, { type: "audio/mp4" });
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      const player = document.getElementById("player");
+      player.src = audioUrl;
+      player.style.display = "block";
+
+      playBtn.disabled = false;
+      status.innerText = "录音完成，可以播放";
+    };
+
+    mediaRecorder.start();
+    status.innerText = "录音中…";
+
+    setTimeout(() => {
+      mediaRecorder.stop();
+    }, 3000);
+  } catch (err) {
+    status.innerText = "无法访问麦克风";
+  }
+};
+
+playBtn.onclick = () => {
+  if (!audioBlob) return;
+  const audioUrl = URL.createObjectURL(audioBlob);
+};
+</script>
+</body>
+</html>
