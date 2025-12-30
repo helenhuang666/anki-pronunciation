@@ -1,141 +1,173 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <title>Pronunciation Practice</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8" />
+<title>Pronunciation Practice</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f6f8fb;
-      margin: 0;
-      padding: 16px;
-    }
-
-    .card {
-      max-width: 420px;
-      margin: 0 auto;
-      background: #fff;
-      border-radius: 12px;
-      padding: 20px;
-      box-shadow: 0 4px 12px rgba(0,0,0,.08);
-    }
-
-    #word {
-      font-size: 28px;
-      text-align: center;
-      margin-bottom: 16px;
-    }
-
-    button {
-      width: 100%;
-      padding: 14px;
-      font-size: 16px;
-      border-radius: 10px;
-      border: none;
-      background: #1976ff;
-      color: #fff;
-    }
-
-    button:active {
-      background: #1258c7;
-    }
-
-    #status {
-      text-align: center;
-      margin: 12px 0;
-      color: #555;
-    }
-
-    audio {
-      width: 100%;
-      margin-top: 10px;
-      accent-color: #1976ff;
-    }
-
-    #scores {
-      margin-top: 14px;
-      font-size: 15px;
-      line-height: 1.6;
-    }
-  </style>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f6f8fb;
+    margin: 0;
+    padding: 16px;
+  }
+  .card {
+    max-width: 420px;
+    margin: auto;
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.08);
+  }
+  #word {
+    font-size: 28px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    border-radius: 10px;
+    border: none;
+    background: #1976ff;
+    color: #fff;
+  }
+  button:active { background: #1258c7; }
+  #status {
+    text-align: center;
+    margin: 12px 0;
+    color: #555;
+  }
+  audio {
+    width: 100%;
+    margin-top: 10px;
+    accent-color: #1976ff;
+  }
+  #scores {
+    margin-top: 14px;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+</style>
 </head>
 
 <body>
-  <div class="card">
-    <div id="word">example</div>
+<div class="card">
+  <div id="word">example</div>
 
-    <button id="recordBtn">按住录音，松开测评</button>
+  <button id="recordBtn">按住录音，松开测评</button>
 
-    <div id="status">准备就绪</div>
+  <div id="status">准备就绪</div>
 
-    <audio id="player" controls></audio>
+  <audio id="player" controls></audio>
 
-    <div id="scores"></div>
-  </div>
+  <div id="scores"></div>
+</div>
 
 <script>
-let mediaRecorder;
-let chunks = [];
+let audioContext;
+let processor;
+let input;
 let stream;
+let audioData = [];
 
 const recordBtn = document.getElementById("recordBtn");
 const status = document.getElementById("status");
 const player = document.getElementById("player");
 
-async function initMic() {
-  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-}
-
 recordBtn.addEventListener("touchstart", startRecord);
 recordBtn.addEventListener("mousedown", startRecord);
-
 recordBtn.addEventListener("touchend", stopRecord);
 recordBtn.addEventListener("mouseup", stopRecord);
 
 async function startRecord(e) {
   e.preventDefault();
-  if (!stream) await initMic();
 
-  chunks = [];
-  mediaRecorder = new MediaRecorder(stream);
-  mediaRecorder.start();
+  audioData = [];
+  audioContext = new (window.AudioContext || window.webkitAudioContext)({
+    sampleRate: 16000
+  });
 
-  mediaRecorder.ondataavailable = e => chunks.push(e.data);
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  input = audioContext.createMediaStreamSource(stream);
+
+  processor = audioContext.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = e => {
+    audioData.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
+
+  input.connect(processor);
+  processor.connect(audioContext.destination);
 
   status.innerText = "录音中…";
 }
 
 async function stopRecord(e) {
   e.preventDefault();
-  if (!mediaRecorder || mediaRecorder.state !== "recording") return;
+  if (!audioContext) return;
 
-  mediaRecorder.stop();
+  processor.disconnect();
+  input.disconnect();
+  stream.getTracks().forEach(t => t.stop());
 
-  mediaRecorder.onstop = async () => {
-    const audioBlob = new Blob(chunks, { type: "audio/webm" });
-    player.src = URL.createObjectURL(audioBlob);
-
-    await sendToAzure(audioBlob);
-  };
-}
-
-async function sendToAzure(audioBlob) {
-  const word = document.getElementById("word").innerText;
-  const scoresDiv = document.getElementById("scores");
+  const wavBlob = encodeWAV(audioData, audioContext.sampleRate);
+  player.src = URL.createObjectURL(wavBlob);
 
   status.innerText = "测评中…";
+  await sendToAzure(wavBlob);
+
+  audioContext.close();
+  audioContext = null;
+}
+
+function encodeWAV(buffers, sampleRate) {
+  let length = buffers.reduce((sum, b) => sum + b.length, 0);
+  let pcm = new Int16Array(length);
+  let offset = 0;
+
+  buffers.forEach(b => {
+    for (let i = 0; i < b.length; i++, offset++) {
+      pcm[offset] = Math.max(-1, Math.min(1, b[i])) * 0x7fff;
+    }
+  });
+
+  const buffer = new ArrayBuffer(44 + pcm.length * 2);
+  const view = new DataView(buffer);
+
+  function writeStr(o, s) { for (let i=0;i<s.length;i++) view.setUint8(o+i, s.charCodeAt(i)); }
+
+  writeStr(0,"RIFF");
+  view.setUint32(4,36+pcm.length*2,true);
+  writeStr(8,"WAVE");
+  writeStr(12,"fmt ");
+  view.setUint32(16,16,true);
+  view.setUint16(20,1,true);
+  view.setUint16(22,1,true);
+  view.setUint32(24,sampleRate,true);
+  view.setUint32(28,sampleRate*2,true);
+  view.setUint16(32,2,true);
+  view.setUint16(34,16,true);
+  writeStr(36,"data");
+  view.setUint32(40,pcm.length*2,true);
+
+  let pos = 44;
+  pcm.forEach(v => { view.setInt16(pos, v, true); pos+=2; });
+
+  return new Blob([view], { type: "audio/wav" });
+}
+
+async function sendToAzure(wavBlob) {
+  const word = document.getElementById("word").innerText;
+  const scoresDiv = document.getElementById("scores");
   scoresDiv.innerHTML = "";
 
   try {
     const res = await fetch(
       "https://anki-pronunciation.onrender.com/assess?text=" +
         encodeURIComponent(word),
-      {
-        method: "POST",
-        body: audioBlob
-      }
+      { method: "POST", body: wavBlob }
     );
 
     const data = await res.json();
@@ -143,13 +175,12 @@ async function sendToAzure(audioBlob) {
 
     status.innerText = "测评完成";
     scoresDiv.innerHTML = `
-      <strong>总分：</strong>${Math.round(pa.PronunciationScore)}<br>
+      总分：${Math.round(pa.PronunciationScore)}<br>
       Accuracy：${Math.round(pa.AccuracyScore)}<br>
       Fluency：${Math.round(pa.FluencyScore)}<br>
       Completeness：${Math.round(pa.CompletenessScore)}
     `;
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
     status.innerText = "测评失败，请重试";
   }
 }
