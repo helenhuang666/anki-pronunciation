@@ -1,63 +1,85 @@
 import express from "express";
 import cors from "cors";
+import sdk from "microsoft-cognitiveservices-speech-sdk";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-/* ========= 基础设置 ========= */
-const app = express();
-app.use(cors());
-app.use(express.raw({ type: "*/*", limit: "10mb" }));
-
-/* ========= 解决 __dirname（ESM 必需） ========= */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/* ========= 托管静态网页（index.html） ========= */
+const app = express();
+app.use(cors());
+
+// ⚠️ 接收二进制音频（非常关键）
+app.use(express.raw({ type: "*/*", limit: "10mb" }));
+
+// 提供 index.html
 app.use(express.static(__dirname));
 
-/* ========= Azure 配置（只写在这里！） ========= */
-const SPEECH_KEY = process.env.AZURE_KEY;
-const REGION = process.env.AZURE_REGION;
-
-/* ========= 发音测评接口 ========= */
 app.post("/assess", async (req, res) => {
+  console.log("=== /assess called ===");
+  console.log("Content-Type:", req.headers["content-type"]);
+  console.log("Body length:", req.body?.length);
+  
   try {
-    const text = req.query.text;
+    const referenceText = req.query.text;
+    if (!referenceText) {
+      return res.status(400).json({ error: "No reference text" });
+    }
 
-    const url =
-      `https://${REGION}.stt.speech.microsoft.com/` +
-      `speech/recognition/conversation/cognitiveservices/v1` +
-      `?language=en-US`;
+    // 保存音频
+    const audioPath = path.join(__dirname, "input.wav");
+    fs.writeFileSync(audioPath, req.body);
 
-    const pronConfig = {
-      ReferenceText: text,
-      GradingSystem: "HundredMark",
-      Granularity: "Phoneme",
-      EnableMiscue: true
-    };
+    // Azure config
+    const speechConfig = sdk.SpeechConfig.fromSubscription(
+      process.env.AZURE_KEY,
+      process.env.AZURE_REGION
+    );
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": SPEECH_KEY,
-        "Content-Type": "audio/mp4",
-        "Pronunciation-Assessment":
-          Buffer.from(JSON.stringify(pronConfig)).toString("base64")
+    speechConfig.speechRecognitionLanguage = "en-US";
+
+    // Pronunciation config
+    const pronConfig = new sdk.PronunciationAssessmentConfig(
+      referenceText,
+      sdk.PronunciationAssessmentGradingSystem.HundredMark,
+      sdk.PronunciationAssessmentGranularity.Phoneme,
+      true
+    );
+
+    const audioConfig = sdk.AudioConfig.fromWavFileInput(
+      fs.readFileSync(audioPath)
+    );
+
+    const recognizer = new sdk.SpeechRecognizer(
+      speechConfig,
+      audioConfig
+    );
+
+    pronConfig.applyTo(recognizer);
+
+    recognizer.recognizeOnceAsync(
+      result => {
+        recognizer.close();
+
+        if (result.reason !== sdk.ResultReason.RecognizedSpeech) {
+          return res.status(500).json({ error: "Recognition failed" });
+        }
+
+        res.json(JSON.parse(result.json));
       },
-      body: req.body
-    });
-
-    const data = await response.json();
-    res.json(data);
+      err => {
+        recognizer.close();
+        res.status(500).json({ error: err.toString() });
+      }
+    );
   } catch (e) {
-    console.error("Azure error:", e);
-    res.status(500).json({ error: "Azure assessment failed" });
+    res.status(500).json({ error: e.toString() });
   }
 });
 
-/* ========= 启动服务 ========= */
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Server running on port", PORT);
 });
