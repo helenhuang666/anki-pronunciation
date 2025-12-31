@@ -10,42 +10,79 @@
     margin: 0;
     padding: 12px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #fff;
+    color: #111;
     text-align: center;
   }
-  .word { font-size: 26px; font-weight: 600; margin-bottom: 6px; }
-  .tip { font-size: 12px; color: #666; margin-bottom: 10px; }
-  button {
-    width: 100%; padding: 12px; font-size: 16px;
-    border-radius: 8px; border: none;
-    background: #3b82f6; color: #fff;
+
+  .word {
+    font-size: 26px;
+    font-weight: 600;
+    margin-bottom: 10px;
   }
-  button.recording { background: #ef4444; }
-  #status { margin-top: 8px; font-size: 13px; color: #666; }
-  audio { width: 100%; margin-top: 8px; }
+
+  button {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: none;
+    background: #3b82f6;
+    color: #fff;
+  }
+
+  button.recording {
+    background: #ef4444;
+  }
+
+  #status {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #666;
+  }
+
+  audio {
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .scores {
+    margin-top: 10px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
 </style>
 </head>
 
 <body>
 
-<div class="word" id="word"></div>
-<div class="tip">首次使用需要允许麦克风，用于发音测评</div>
+<div class="word" id="word">Loading…</div>
 
 <button id="recordBtn">🎤 开始录音</button>
+
 <div id="status">点击开始录音</div>
+
 <audio id="player" controls></audio>
 
+<div class="scores" id="scores"></div>
+
 <script>
+/* ---------- 单词 ---------- */
 const word = new URLSearchParams(location.search).get("word") || "example";
 document.getElementById("word").innerText = word;
 
+/* ---------- DOM ---------- */
+const btn = document.getElementById("recordBtn");
+const status = document.getElementById("status");
+const player = document.getElementById("player");
+const scoresDiv = document.getElementById("scores");
+
+/* ---------- 状态 ---------- */
 let mediaRecorder;
 let chunks = [];
 let recording = false;
 
-const btn = document.getElementById("recordBtn");
-const status = document.getElementById("status");
-const player = document.getElementById("player");
-
+/* ---------- 点击开始 / 点击停止 ---------- */
 btn.onclick = async () => {
   if (!recording) {
     try {
@@ -63,7 +100,9 @@ btn.onclick = async () => {
       mediaRecorder.onstop = async () => {
         const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
         player.src = URL.createObjectURL(blob);
-        player.onloadedmetadata = () => player.currentTime = 0;
+        player.onloadedmetadata = () => {
+          player.currentTime = 0;
+        };
         await send(blob);
       };
 
@@ -73,9 +112,10 @@ btn.onclick = async () => {
       btn.innerText = "⏹ 停止录音";
       status.innerText = "录音中…";
 
-    } catch {
+    } catch (e) {
       status.innerText = "无法访问麦克风";
     }
+
   } else {
     mediaRecorder.stop();
     recording = false;
@@ -85,16 +125,42 @@ btn.onclick = async () => {
   }
 };
 
+/* ---------- 发送到服务端 ---------- */
 async function send(blob) {
   status.innerText = "测评中…";
+  scoresDiv.innerHTML = "";
+
   try {
-    const res = await fetch("/assess?text=" + encodeURIComponent(word), {
-      method: "POST",
-      body: blob
-    });
+    const res = await fetch(
+      "/assess?text=" + encodeURIComponent(word),
+      {
+        method: "POST",
+        body: blob
+      }
+    );
+
     const data = await res.json();
-    status.innerText = data ? "测评完成" : "测评失败";
-  } catch {
+
+    if (
+      !data ||
+      !data.NBest ||
+      !data.NBest[0] ||
+      !data.NBest[0].PronunciationAssessment
+    ) {
+      throw new Error("No score");
+    }
+
+    const p = data.NBest[0].PronunciationAssessment;
+
+    scoresDiv.innerHTML = `
+      Accuracy: ${Math.round(p.AccuracyScore)}<br>
+      Fluency: ${Math.round(p.FluencyScore)}<br>
+      Completeness: ${Math.round(p.CompletenessScore)}
+    `;
+
+    status.innerText = "测评完成";
+
+  } catch (e) {
     status.innerText = "测评失败";
   }
 }
