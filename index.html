@@ -10,110 +10,61 @@
     margin: 0;
     padding: 12px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #fff;
-    color: #111;
     text-align: center;
   }
-
-  .word {
-    font-size: 26px;
-    font-weight: 600;
-    margin-bottom: 6px;
-  }
-
-  .tip {
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 10px;
-  }
-
+  .word { font-size: 26px; font-weight: 600; margin-bottom: 6px; }
+  .tip { font-size: 12px; color: #666; margin-bottom: 10px; }
   button {
-    width: 100%;
-    padding: 12px;
-    font-size: 16px;
-    border-radius: 8px;
-    border: none;
-    background: #3b82f6;
-    color: white;
+    width: 100%; padding: 12px; font-size: 16px;
+    border-radius: 8px; border: none;
+    background: #3b82f6; color: #fff;
   }
-
-  button.recording {
-    background: #ef4444;
-  }
-
-  #status {
-    margin-top: 8px;
-    font-size: 13px;
-    color: #666;
-  }
-
-  audio {
-    width: 100%;
-    margin-top: 8px;
-  }
-
-  .scores {
-    margin-top: 10px;
-    font-size: 14px;
-    line-height: 1.6;
-  }
+  button.recording { background: #ef4444; }
+  #status { margin-top: 8px; font-size: 13px; color: #666; }
+  audio { width: 100%; margin-top: 8px; }
 </style>
 </head>
 
 <body>
 
-<div class="word" id="word">Loading…</div>
-
-<div id="permissionTip" class="tip">
-  首次使用需要允许麦克风，用于发音测评
-</div>
+<div class="word" id="word"></div>
+<div class="tip">首次使用需要允许麦克风，用于发音测评</div>
 
 <button id="recordBtn">🎤 开始录音</button>
-
 <div id="status">点击开始录音</div>
-
-<audio id="player" controls style="display:none;"></audio>
-
-<div class="scores" id="scores"></div>
+<audio id="player" controls></audio>
 
 <script>
-/* ---------- 初始化单词 ---------- */
-const params = new URLSearchParams(window.location.search);
-const word = params.get("word") || "example";
+const word = new URLSearchParams(location.search).get("word") || "example";
 document.getElementById("word").innerText = word;
 
-/* ---------- DOM ---------- */
+let mediaRecorder;
+let chunks = [];
+let recording = false;
+
 const btn = document.getElementById("recordBtn");
 const status = document.getElementById("status");
 const player = document.getElementById("player");
-const scoresDiv = document.getElementById("scores");
-const tip = document.getElementById("permissionTip");
 
-/* ---------- 权限提示只显示一次 ---------- */
-if (localStorage.getItem("micPermissionGranted") === "yes") {
-  if (tip) tip.style.display = "none";
-}
-
-/* ---------- 录音状态 ---------- */
-let mediaRecorder;
-let audioChunks = [];
-let recording = false;
-
-/* ---------- 点击开始 / 点击停止 ---------- */
 btn.onclick = async () => {
   if (!recording) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      audioChunks = [];
 
-      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/mp4";
+
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
+      chunks = [];
+
+      mediaRecorder.ondataavailable = e => chunks.push(e.data);
 
       mediaRecorder.onstop = async () => {
-        const blob = new Blob(audioChunks, { type: "audio/wav" });
+        const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
         player.src = URL.createObjectURL(blob);
-        player.style.display = "block";
-        await sendToAzure(blob);
+        player.onloadedmetadata = () => player.currentTime = 0;
+        await send(blob);
       };
 
       mediaRecorder.start();
@@ -122,14 +73,9 @@ btn.onclick = async () => {
       btn.innerText = "⏹ 停止录音";
       status.innerText = "录音中…";
 
-      // 成功一次就记住，不再显示提示
-      localStorage.setItem("micPermissionGranted", "yes");
-      if (tip) tip.style.display = "none";
-
-    } catch (err) {
+    } catch {
       status.innerText = "无法访问麦克风";
     }
-
   } else {
     mediaRecorder.stop();
     recording = false;
@@ -139,38 +85,17 @@ btn.onclick = async () => {
   }
 };
 
-/* ---------- 发送到 Azure ---------- */
-async function sendToAzure(audioBlob) {
-  scoresDiv.innerHTML = "";
+async function send(blob) {
   status.innerText = "测评中…";
-
   try {
-    const res = await fetch(
-      "/assess?text=" + encodeURIComponent(word),
-      {
-        method: "POST",
-        body: audioBlob
-      }
-    );
-
+    const res = await fetch("/assess?text=" + encodeURIComponent(word), {
+      method: "POST",
+      body: blob
+    });
     const data = await res.json();
-
-    if (!data.NBest || !data.NBest[0]) {
-      throw new Error("Invalid result");
-    }
-
-    const p = data.NBest[0].PronunciationAssessment;
-
-    scoresDiv.innerHTML = `
-      Accuracy&nbsp;&nbsp;${p.AccuracyScore}<br>
-      Fluency&nbsp;&nbsp;${p.FluencyScore}<br>
-      Completeness&nbsp;&nbsp;${p.CompletenessScore}
-    `;
-
-    status.innerText = "测评完成";
-
-  } catch (e) {
-    status.innerText = "测评失败，请重试";
+    status.innerText = data ? "测评完成" : "测评失败";
+  } catch {
+    status.innerText = "测评失败";
   }
 }
 </script>
