@@ -3,26 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Anki Pronunciation</title>
+<title>Pronunciation Test</title>
 
 <style>
 body {
-  margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-.card {
-  padding: 8px;
+  padding: 12px;
 }
 #word {
   text-align: center;
   font-size: 26px;
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
 }
 button {
   width: 100%;
-  padding: 10px;
-  font-size: 15px;
+  padding: 12px;
+  font-size: 16px;
   border-radius: 8px;
   border: none;
   background: #1976ff;
@@ -33,144 +30,161 @@ button.recording {
 }
 #status {
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
   color: #666;
-  margin: 4px 0;
+  margin: 8px 0;
 }
 audio {
   width: 100%;
-  margin-top: 6px;
-  accent-color: #1976ff;
+  margin-top: 8px;
 }
 #scores {
-  margin-top: 6px;
-  font-size: 13px;
+  margin-top: 10px;
+  font-size: 14px;
   line-height: 1.5;
 }
 </style>
 </head>
 
 <body>
-<div class="card">
 
-  <div id="word">Loading…</div>
+<div id="word">example</div>
 
-  <button id="recordBtn">🎤 开始录音</button>
+<button id="btn">🎤 开始录音</button>
 
-  <div id="status">准备就绪</div>
+<div id="status">准备就绪</div>
 
-  <audio id="player" controls></audio>
+<audio id="player" controls></audio>
 
-  <div id="scores"></div>
-
-</div>
+<div id="scores"></div>
 
 <script>
-/* ===== 单词（Anki 通过 URL 传入） ===== */
+/* ========= 单词 ========= */
 const params = new URLSearchParams(location.search);
 const word = params.get("word") || "example";
 document.getElementById("word").innerText = word;
 
-/* ===== 状态 ===== */
-let recorder;
-let chunks = [];
+/* ========= 录音 ========= */
+let audioContext;
+let mediaStream;
+let processor;
+let data = [];
 let recording = false;
 
-const btn = document.getElementById("recordBtn");
+const btn = document.getElementById("btn");
 const status = document.getElementById("status");
 const player = document.getElementById("player");
-const scoresDiv = document.getElementById("scores");
+const scores = document.getElementById("scores");
 
-/* ===== 点击开始 / 停止 ===== */
 btn.onclick = async () => {
-  if (!recording) {
-    await startRecording();
-  } else {
-    stopRecording();
-  }
+  if (!recording) start();
+  else stop();
 };
 
-/* ===== 开始录音 ===== */
-async function startRecording() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+async function start() {
+  data = [];
+  audioContext = new AudioContext({ sampleRate: 16000 });
+  mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    const mimeType =
-      MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/mp4";
+  const source = audioContext.createMediaStreamSource(mediaStream);
+  processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-    recorder = new MediaRecorder(stream, { mimeType });
-    chunks = [];
+  processor.onaudioprocess = e => {
+    data.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
 
-    recorder.ondataavailable = e => chunks.push(e.data);
+  source.connect(processor);
+  processor.connect(audioContext.destination);
 
-    recorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: recorder.mimeType });
-      player.src = URL.createObjectURL(blob);
-      player.onloadedmetadata = () => {
-        player.currentTime = 0;
-      };
-      await sendToAzure(blob);
-    };
-
-    recorder.start();
-    recording = true;
-    btn.classList.add("recording");
-    btn.innerText = "⏹ 停止录音";
-    status.innerText = "录音中…";
-    scoresDiv.innerHTML = "";
-
-  } catch (e) {
-    status.innerText = "无法访问麦克风";
-  }
+  recording = true;
+  btn.classList.add("recording");
+  btn.innerText = "⏹ 停止录音";
+  status.innerText = "录音中…";
+  scores.innerHTML = "";
 }
 
-/* ===== 停止录音 ===== */
-function stopRecording() {
-  if (!recorder) return;
-  recorder.stop();
-  recorder.stream.getTracks().forEach(t => t.stop());
+function stop() {
+  processor.disconnect();
+  mediaStream.getTracks().forEach(t => t.stop());
+  audioContext.close();
+
+  const wav = encodeWAV(data, 16000);
+  player.src = URL.createObjectURL(wav);
+
   recording = false;
   btn.classList.remove("recording");
   btn.innerText = "🎤 开始录音";
-  status.innerText = "处理中…";
+
+  send(wav);
 }
 
-/* ===== 发送到 Azure ===== */
-async function sendToAzure(audioBlob) {
+/* ========= WAV 编码 ========= */
+function encodeWAV(buffers, sampleRate) {
+  let length = buffers.reduce((s, b) => s + b.length, 0);
+  let pcm = new Int16Array(length);
+  let offset = 0;
+
+  buffers.forEach(b => {
+    for (let i = 0; i < b.length; i++, offset++) {
+      pcm[offset] = Math.max(-1, Math.min(1, b[i])) * 0x7fff;
+    }
+  });
+
+  const buffer = new ArrayBuffer(44 + pcm.length * 2);
+  const view = new DataView(buffer);
+
+  function write(o, s) {
+    for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i));
+  }
+
+  write(0, "RIFF");
+  view.setUint32(4, 36 + pcm.length * 2, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, pcm.length * 2, true);
+
+  let p = 44;
+  pcm.forEach(v => {
+    view.setInt16(p, v, true);
+    p += 2;
+  });
+
+  return new Blob([view], { type: "audio/wav" });
+}
+
+/* ========= 发送测评 ========= */
+async function send(wav) {
   status.innerText = "测评中…";
 
   try {
     const res = await fetch(
       "/assess?text=" + encodeURIComponent(word),
-      {
-        method: "POST",
-        body: audioBlob
-      }
+      { method: "POST", body: wav }
     );
 
-    const data = await res.json();
-    const pa = data?.NBest?.[0]?.PronunciationAssessment;
-    if (!pa) throw "no score";
-
-    const acc = pa.AccuracyScore ?? 0;
-    const flu = pa.FluencyScore ?? 0;
-    const comp = pa.CompletenessScore ?? 0;
-    const total = Math.round((acc + flu + comp) / 3);
+    const json = await res.json();
+    const pa = json?.NBest?.[0]?.PronunciationAssessment;
+    if (!pa) throw 1;
 
     status.innerText = "测评完成";
-    scoresDiv.innerHTML = `
-      总分：${total}<br>
-      Accuracy：${Math.round(acc)}<br>
-      Fluency：${Math.round(flu)}<br>
-      Completeness：${Math.round(comp)}
+    scores.innerHTML = `
+      Accuracy: ${Math.round(pa.AccuracyScore)}<br>
+      Fluency: ${Math.round(pa.FluencyScore)}<br>
+      Completeness: ${Math.round(pa.CompletenessScore)}
     `;
-
-  } catch (e) {
+  } catch {
     status.innerText = "测评失败";
   }
 }
 </script>
+
 </body>
 </html>
