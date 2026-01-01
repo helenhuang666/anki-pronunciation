@@ -1,46 +1,101 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Anki Pronunciation</title>
 
-  <title>Anki Pronunciation</title>
+<link rel="manifest" href="/manifest.json">
 
-  <!-- ✅ 1. manifest -->
-  <link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 
-  <!-- ✅ 2. PWA iOS 支持 -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-
-  <style>
-    body {
-      margin: 0;
-      padding: 12px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    #word {
-      text-align: center;
-      font-size: 26px;
-      font-weight: 600;
-      margin-bottom: 12px;
-    }
-  </style>
+<style>
+body {
+  margin: 0;
+  padding: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+#word {
+  text-align: center;
+  font-size: 26px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+button {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  border-radius: 8px;
+  border: none;
+  background: #1976ff;
+  color: #fff;
+}
+button:active {
+  background: #1258c7;
+}
+#status {
+  text-align: center;
+  font-size: 12px;
+  color: #666;
+  margin-top: 8px;
+}
+audio {
+  width: 100%;
+  margin-top: 8px;
+}
+</style>
 </head>
 
 <body>
   <div id="word"></div>
 
-  <script>
-    /* 显示 Anki 传入的单词 */
-    const params = new URLSearchParams(location.search);
-    document.getElementById("word").innerText =
-      params.get("word") || "example";
+  <button id="recordBtn">🎤 开始录音</button>
 
-    /* ✅ 3. 注册 Service Worker */
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js");
-    }
-  </script>
+  <div id="status">准备就绪</div>
+
+  <audio id="player" controls></audio>
+
+<script>
+/* 注册 SW */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js");
+}
+
+/* 显示单词 */
+const params = new URLSearchParams(location.search);
+const word = params.get("word") || "example";
+document.getElementById("word").innerText = word;
+
+const recordBtn = document.getElementById("recordBtn");
+const status = document.getElementById("status");
+const player = document.getElementById("player");
+
+let mediaRecorder;
+let chunks = [];
+let recording = false;
+
+recordBtn.onclick = async () => {
+  if (!recording) {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    chunks = [];
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      player.src = URL.createObjectURL(blob);
+      status.innerText = "录音完成（示例未接测评）";
+    };
+    mediaRecorder.start();
+    recording = true;
+    recordBtn.innerText = "⏹ 停止录音";
+    status.innerText = "录音中…";
+  } else {
+    mediaRecorder.stop();
+    recording = false;
+    recordBtn.innerText = "🎤 开始录音";
+  }
+};
+</script>
 </body>
 </html>
