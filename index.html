@@ -1,195 +1,200 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Anki 发音测评</title>
-
-<link rel="manifest" href="/manifest.json">
 
 <style>
 body {
   margin: 0;
-  padding: 16px 16px 96px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #fafafa;
-  color: #222;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: transparent;
+}
+
+.card {
+  padding: 10px;
 }
 
 #word {
   text-align: center;
-  font-size: 30px;
-  font-weight: 700;
-}
-
-#phonetic {
-  text-align: center;
-  color: #666;
-  margin-bottom: 12px;
-}
-
-.section {
-  background: #fff;
-  border-radius: 12px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.phonemes {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.phoneme {
-  padding: 6px 10px;
-  border-radius: 8px;
+  font-size: 28px;
   font-weight: 600;
-  transition: transform 0.2s;
 }
 
-.phoneme.good { background: #e6f4ea; color: #1e8e3e; }
-.phoneme.mid  { background: #fff4e5; color: #c77700; }
-.phoneme.bad  { background: #fdecea; color: #c5221f; }
+#ipa {
+  text-align: center;
+  font-size: 16px;
+  color: #666;
+  margin-bottom: 8px;
+}
 
-.score-row {
+#total {
+  text-align: center;
+  font-size: 22px;
+  font-weight: bold;
+  margin: 6px 0;
+}
+
+#metrics {
   display: flex;
-  justify-content: space-between;
-  margin: 4px 0;
+  justify-content: space-around;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+#phonemes {
+  text-align: center;
+  margin-top: 6px;
+}
+
+.ph {
+  display: inline-block;
+  padding: 4px 6px;
+  margin: 2px;
+  border-radius: 6px;
   font-size: 14px;
+  background: #eee;
+}
+
+.bad { background: #ffcccc; }
+.mid { background: #ffe0a3; }
+.good { background: #c8f5c8; }
+
+button {
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: none;
+  background: #1976ff;
+  color: white;
 }
 
 audio {
   width: 100%;
-}
-
-#status {
-  text-align: center;
-  font-size: 12px;
-  color: #666;
-}
-
-/* 底部录音按钮 */
-#recordBtn {
-  position: fixed;
-  bottom: 16px;
-  left: 16px;
-  right: 16px;
-  height: 52px;
-  border-radius: 26px;
-  border: none;
-  background: #1976ff;
-  color: #fff;
-  font-size: 16px;
-}
-#recordBtn.recording {
-  background: #d93025;
+  margin-top: 6px;
 }
 </style>
 </head>
 
 <body>
+<div class="card">
 
-<div id="word">apple</div>
-<div id="phonetic">/ˈæpəl/</div>
+  <div id="word"></div>
+  <div id="ipa"></div>
 
-<div class="section">
-  <div class="phonemes" id="phonemeBox">
-    <!-- 音素高亮 -->
+  <div id="total">—</div>
+  <div id="metrics">
+    <div id="acc">准确度 —</div>
+    <div id="flu">流利度 —</div>
+    <div id="com">完整度 —</div>
   </div>
-</div>
 
-<div class="section">
-  <div class="score-row"><span>准确度</span><span id="acc">--</span></div>
-  <div class="score-row"><span>流利度</span><span id="flu">--</span></div>
-  <div class="score-row"><span>完整度</span><span id="com">--</span></div>
-</div>
+  <div id="phonemes"></div>
 
-<div class="section">
+  <button id="btn">🎤 开始录音</button>
   <audio id="player" controls></audio>
+
 </div>
-
-<div id="status">准备就绪</div>
-
-<button id="recordBtn">🎤 开始录音</button>
 
 <script>
-/* 单词 */
 const params = new URLSearchParams(location.search);
-const word = params.get("word") || "apple";
-document.getElementById("word").innerText = word;
+const word = params.get("word") || "example";
+const ipa = params.get("ipa") || "";
 
-const recordBtn = document.getElementById("recordBtn");
-const status = document.getElementById("status");
-const player = document.getElementById("player");
+wordEl.innerText = word;
+ipaEl.innerText = ipa;
 
-let mediaRecorder, chunks = [], recording = false;
+let recording = false;
+let audioContext, processor, input, stream;
+let chunks = [];
 
-recordBtn.onclick = async () => {
+btn.onclick = async () => {
   if (!recording) {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    chunks = [];
-    mediaRecorder.ondataavailable = e => chunks.push(e.data);
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(chunks, { type: "audio/webm" });
-      player.src = URL.createObjectURL(blob);
-      sendToAssess(blob);
-    };
-    mediaRecorder.start();
-    recording = true;
-    recordBtn.classList.add("recording");
-    recordBtn.innerText = "⏹ 停止录音";
-    status.innerText = "录音中…";
+    start();
+    btn.innerText = "⏹ 停止录音";
   } else {
-    mediaRecorder.stop();
-    recording = false;
-    recordBtn.classList.remove("recording");
-    recordBtn.innerText = "🎤 开始录音";
+    stop();
+    btn.innerText = "🎤 开始录音";
   }
+  recording = !recording;
 };
 
-async function sendToAssess(blob) {
-  status.innerText = "测评中…";
-  const res = await fetch(
-    "https://anki-pronunciation.onrender.com/assess?text=" +
-    encodeURIComponent(word),
-    { method: "POST", body: blob }
-  );
-  const data = await res.json();
-  renderResult(data);
+async function start() {
+  chunks = [];
+  audioContext = new AudioContext({ sampleRate: 16000 });
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  input = audioContext.createMediaStreamSource(stream);
+  processor = audioContext.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = e => {
+    chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
+  input.connect(processor);
+  processor.connect(audioContext.destination);
 }
 
-function renderResult(data) {
-  const pa = data.NBest?.[0]?.PronunciationAssessment;
-  if (!pa) {
-    status.innerText = "测评失败";
-    return;
-  }
+function stop() {
+  processor.disconnect();
+  input.disconnect();
+  stream.getTracks().forEach(t => t.stop());
 
-  document.getElementById("acc").innerText = Math.round(pa.AccuracyScore);
-  document.getElementById("flu").innerText = Math.round(pa.FluencyScore);
-  document.getElementById("com").innerText = Math.round(pa.CompletenessScore);
+  const wav = encodeWAV(chunks, audioContext.sampleRate);
+  player.src = URL.createObjectURL(wav);
+  send(wav);
+}
 
-  const phonemeBox = document.getElementById("phonemeBox");
-  phonemeBox.innerHTML = "";
-
-  const phonemes =
-    data.NBest[0].Words?.[0]?.Phonemes || [];
-
-  phonemes.forEach(p => {
-    const div = document.createElement("div");
-    div.className = "phoneme " +
-      (p.AccuracyScore >= 80 ? "good" :
-       p.AccuracyScore >= 60 ? "mid" : "bad");
-    div.innerText = p.Phoneme;
-    phonemeBox.appendChild(div);
+function encodeWAV(buffers, sr) {
+  let len = buffers.reduce((s,b)=>s+b.length,0);
+  let pcm = new Int16Array(len);
+  let o=0;
+  buffers.forEach(b=>{
+    for(let i=0;i<b.length;i++) pcm[o++] = b[i]*0x7fff;
   });
 
-  status.innerText = "测评完成";
+  let buf = new ArrayBuffer(44 + pcm.length*2);
+  let v = new DataView(buf);
+  const w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  w(0,"RIFF"); v.setUint32(4,36+pcm.length*2,true);
+  w(8,"WAVE"); w(12,"fmt "); v.setUint32(16,16,true);
+  v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true);
+  w(36,"data"); v.setUint32(40,pcm.length*2,true);
+  let p=44; pcm.forEach(x=>{v.setInt16(p,x,true);p+=2});
+  return new Blob([v],{type:"audio/wav"});
+}
+
+async function send(blob) {
+  const r = await fetch(
+    "https://anki-pronunciation.onrender.com/assess?text=" +
+    encodeURIComponent(word),
+    { method:"POST", body: blob }
+  );
+  const d = await r.json();
+  const pa = d.NBest?.[0]?.PronunciationAssessment;
+  if (!pa) return;
+
+  acc.innerText = "准确度 " + Math.round(pa.AccuracyScore);
+  flu.innerText = "流利度 " + Math.round(pa.FluencyScore);
+  com.innerText = "完整度 " + Math.round(pa.CompletenessScore);
+  total.innerText = "总分 " + Math.round(
+    (pa.AccuracyScore + pa.FluencyScore + pa.CompletenessScore)/3
+  );
+
+  phonemes.innerHTML = "";
+  d.NBest[0].Words.forEach(w=>{
+    w.Phonemes?.forEach(p=>{
+      const s = p.AccuracyScore;
+      const span = document.createElement("span");
+      span.className = "ph " + (s<60?"bad":s<80?"mid":"good");
+      span.innerText = p.Phoneme;
+      span.title = `准确度 ${Math.round(s)}`;
+      phonemes.appendChild(span);
+    });
+  });
 }
 </script>
-
 </body>
 </html>
