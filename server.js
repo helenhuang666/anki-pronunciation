@@ -1,85 +1,85 @@
+
 import express from "express";
+import fetch from "node-fetch";
 import cors from "cors";
-import sdk from "microsoft-cognitiveservices-speech-sdk";
-import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+// ===== 修复 __dirname（ESM 必需）=====
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
+// ===== 中间件 =====
 app.use(cors());
+app.use(express.raw({
+  type: ["audio/wav", "application/octet-stream"],
+  limit: "10mb"
+}));
 
-// ⚠️ 接收二进制音频（非常关键）
-app.use(express.raw({ type: "*/*", limit: "10mb" }));
+// ===== 前端页面（关键！）=====
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
 
-// 提供 index.html
-app.use(express.static(__dirname));
+// ===== PWA 文件 =====
+app.get("/manifest.json", (req, res) => {
+  res.sendFile(path.join(__dirname, "manifest.json"));
+});
 
+// ===== 发音测评接口 =====
 app.post("/assess", async (req, res) => {
-  console.log("=== /assess called ===");
-  console.log("Content-Type:", req.headers["content-type"]);
-  console.log("Body length:", req.body?.length);
-  
   try {
-    const referenceText = req.query.text;
-    if (!referenceText) {
-      return res.status(400).json({ error: "No reference text" });
+    const text = req.query.text;
+    if (!text) {
+      return res.status(400).json({ error: "Missing text" });
     }
 
-    // 保存音频
-    const audioPath = path.join(__dirname, "input.wav");
-    fs.writeFileSync(audioPath, req.body);
+    const AZURE_KEY = process.env.AZURE_SPEECH_KEY;
+    const AZURE_REGION = process.env.AZURE_SPEECH_REGION;
 
-    // Azure config
-    const speechConfig = sdk.SpeechConfig.fromSubscription(
-      process.env.AZURE_KEY,
-      process.env.AZURE_REGION
-    );
+    if (!AZURE_KEY || !AZURE_REGION) {
+      return res.status(500).json({ error: "Azure config missing" });
+    }
 
-    speechConfig.speechRecognitionLanguage = "en-US";
+    const endpoint =
+      `https://${AZURE_REGION}.stt.speech.microsoft.com/` +
+      `speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`;
 
-    // Pronunciation config
-    const pronConfig = new sdk.PronunciationAssessmentConfig(
-      referenceText,
-      sdk.PronunciationAssessmentGradingSystem.HundredMark,
-      sdk.PronunciationAssessmentGranularity.Phoneme,
-      true
-    );
+    const paConfig = {
+      ReferenceText: text,
+      GradingSystem: "HundredMark",
+      Granularity: "Phoneme",
+      Dimension: "Comprehensive"
+    };
 
-    const audioConfig = sdk.AudioConfig.fromWavFileInput(
-      fs.readFileSync(audioPath)
-    );
+    const paHeader = Buffer
+      .from(JSON.stringify(paConfig))
+      .toString("base64");
 
-    const recognizer = new sdk.SpeechRecognizer(
-      speechConfig,
-      audioConfig
-    );
-
-    pronConfig.applyTo(recognizer);
-
-    recognizer.recognizeOnceAsync(
-      result => {
-        recognizer.close();
-
-        if (result.reason !== sdk.ResultReason.RecognizedSpeech) {
-          return res.status(500).json({ error: "Recognition failed" });
-        }
-
-        res.json(JSON.parse(result.json));
+    const azureRes = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Ocp-Apim-Subscription-Key": AZURE_KEY,
+        "Content-Type": "audio/wav; codecs=audio/pcm; samplerate=16000",
+        "Pronunciation-Assessment": paHeader
       },
-      err => {
-        recognizer.close();
-        res.status(500).json({ error: err.toString() });
-      }
-    );
+      body: req.body
+    });
+
+    const textRes = await azureRes.text();
+    const json = JSON.parse(textRes);
+    res.json(json);
+
   } catch (e) {
-    res.status(500).json({ error: e.toString() });
+    console.error("ASSESS ERROR:", e);
+    res.status(500).json({ error: "Assessment failed" });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
+// ===== 启动 =====
+app.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
