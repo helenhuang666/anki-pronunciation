@@ -1,40 +1,41 @@
-// ===== 基础依赖 =====
 import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 
-// ===== App 初始化 =====
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// ===== 修复 __dirname（ESM 必需）=====
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // ===== 中间件 =====
 app.use(cors());
-
-// 接收原始二进制音频（非常重要！）
 app.use(express.raw({
   type: ["audio/wav", "application/octet-stream"],
   limit: "10mb"
 }));
 
-// ===== 健康检查 =====
+// ===== 前端页面（关键！）=====
 app.get("/", (req, res) => {
-  res.send("Anki Pronunciation Server is running");
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// ===== 核心：发音测评接口 =====
+// ===== PWA 文件 =====
+app.get("/manifest.json", (req, res) => {
+  res.sendFile(path.join(__dirname, "manifest.json"));
+});
+
+// ===== 发音测评接口 =====
 app.post("/assess", async (req, res) => {
   try {
-    // ===== 1. 参数检查 =====
-    const referenceText = req.query.text;
-    if (!referenceText) {
+    const text = req.query.text;
+    if (!text) {
       return res.status(400).json({ error: "Missing text" });
     }
 
-    if (!req.body || req.body.length === 0) {
-      return res.status(400).json({ error: "Missing audio data" });
-    }
-
-    // ===== 2. Azure 环境变量 =====
     const AZURE_KEY = process.env.AZURE_SPEECH_KEY;
     const AZURE_REGION = process.env.AZURE_SPEECH_REGION;
 
@@ -42,25 +43,21 @@ app.post("/assess", async (req, res) => {
       return res.status(500).json({ error: "Azure config missing" });
     }
 
-    // ===== 3. Azure 接口地址 =====
     const endpoint =
       `https://${AZURE_REGION}.stt.speech.microsoft.com/` +
-      `speech/recognition/conversation/cognitiveservices/v1` +
-      `?language=en-US&format=detailed`;
+      `speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`;
 
-    // ===== 4. Pronunciation Assessment 配置 =====
-    const pronunciationConfig = {
-      ReferenceText: referenceText,
+    const paConfig = {
+      ReferenceText: text,
       GradingSystem: "HundredMark",
-      Granularity: "Phoneme",        // 🔴 音素级
-      Dimension: "Comprehensive"     // Accuracy / Fluency / Completeness
+      Granularity: "Phoneme",
+      Dimension: "Comprehensive"
     };
 
     const paHeader = Buffer
-      .from(JSON.stringify(pronunciationConfig))
+      .from(JSON.stringify(paConfig))
       .toString("base64");
 
-    // ===== 5. 向 Azure 发送请求 =====
     const azureRes = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -71,39 +68,17 @@ app.post("/assess", async (req, res) => {
       body: req.body
     });
 
-    const rawText = await azureRes.text();
-
-    // 🔴 关键调试日志（你之后可删）
-    console.log("====== AZURE RAW RESPONSE ======");
-    console.log(rawText);
-    console.log("================================");
-
-    // ===== 6. 解析返回 =====
-    let json;
-    try {
-      json = JSON.parse(rawText);
-    } catch (e) {
-      return res.status(500).json({
-        error: "Azure returned non-JSON",
-        raw: rawText
-      });
-    }
-
-    // ===== 7. 返回给前端 =====
+    const textRes = await azureRes.text();
+    const json = JSON.parse(textRes);
     res.json(json);
 
-  } catch (err) {
-    console.error("❌ /assess error:", err);
+  } catch (e) {
+    console.error("ASSESS ERROR:", e);
     res.status(500).json({ error: "Assessment failed" });
   }
 });
 
-// ===== 启动服务 =====
+// ===== 启动 =====
 app.listen(PORT, () => {
-  console.log("====================================");
-  console.log("Anki Pronunciation Server started");
-  console.log(`Listening on port ${PORT}`);
-  console.log("AZURE_SPEECH_KEY =", process.env.AZURE_SPEECH_KEY ? "OK" : "MISSING");
-  console.log("AZURE_SPEECH_REGION =", process.env.AZURE_SPEECH_REGION);
-  console.log("====================================");
+  console.log("Server running on port", PORT);
 });
