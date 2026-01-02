@@ -1,3 +1,7 @@
+console.log("ENV CHECK:");
+console.log("AZURE_SPEECH_KEY =", process.env.AZURE_SPEECH_KEY ? "OK" : "MISSING");
+console.log("AZURE_SPEECH_REGION =", process.env.AZURE_SPEECH_REGION);
+
 import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
