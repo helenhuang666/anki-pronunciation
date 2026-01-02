@@ -3,177 +3,122 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-<title>Anki Pronunciation</title>
+<title>Pronunciation Test</title>
 
 <style>
 body {
-  margin: 0;
-  padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: transparent;
-}
-
-.card {
   padding: 12px;
 }
-
 #word {
   text-align: center;
   font-size: 26px;
   font-weight: 600;
-  margin-bottom: 4px;
-}
-
-#ipa {
-  text-align: center;
-  font-size: 16px;
-  color: #666;
   margin-bottom: 10px;
 }
-
 button {
   width: 100%;
   padding: 12px;
   font-size: 16px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: none;
   background: #1976ff;
   color: #fff;
 }
-
-button:active {
-  background: #1258c7;
+button.recording {
+  background: #e53935;
 }
-
 #status {
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
   color: #666;
   margin: 8px 0;
 }
-
 audio {
   width: 100%;
-  margin-top: 6px;
-  accent-color: #1976ff;
-}
-
-#scores {
   margin-top: 8px;
+}
+#scores {
+  margin-top: 10px;
   font-size: 14px;
   line-height: 1.5;
-  text-align: center;
 }
 </style>
 </head>
 
 <body>
-<div class="card">
 
-  <div id="word"></div>
-  <div id="ipa"></div>
+<div id="word">example</div>
 
-  <button id="recordBtn">🎤 开始录音</button>
+<button id="btn">🎤 开始录音</button>
 
-  <div id="status">准备就绪</div>
+<div id="status">准备就绪</div>
 
-  <audio id="player" controls></audio>
+<audio id="player" controls></audio>
 
-  <div id="scores"></div>
-
-</div>
+<div id="scores"></div>
 
 <script>
-/* ===== 读取 Anki / URL 参数 ===== */
-const params = new URLSearchParams(window.location.search);
+/* ========= 单词 ========= */
+const params = new URLSearchParams(location.search);
 const word = params.get("word") || "example";
-const ipa = params.get("ipa") || "";
-
 document.getElementById("word").innerText = word;
-document.getElementById("ipa").innerText = ipa;
 
-/* ===== 录音相关变量 ===== */
-let audioContext = null;
-let processor = null;
-let input = null;
-let stream = null;
-let audioData = [];
+/* ========= 录音 ========= */
+let audioContext;
+let mediaStream;
+let processor;
+let data = [];
 let recording = false;
 
-const recordBtn = document.getElementById("recordBtn");
+const btn = document.getElementById("btn");
 const status = document.getElementById("status");
 const player = document.getElementById("player");
-const scoresDiv = document.getElementById("scores");
+const scores = document.getElementById("scores");
 
-/* ===== 点击开始 / 停止 ===== */
-recordBtn.onclick = async () => {
-  if (!recording) {
-    await startRecording();
-    recordBtn.innerText = "⏹ 停止录音";
-    recording = true;
-  } else {
-    stopRecording();
-    recordBtn.innerText = "🎤 开始录音";
-    recording = false;
-  }
+btn.onclick = async () => {
+  if (!recording) start();
+  else stop();
 };
 
-/* ===== 开始录音（Safari 必须 resume） ===== */
-async function startRecording() {
-  try {
-    audioData = [];
-    scoresDiv.innerHTML = "";
+async function start() {
+  data = [];
+  audioContext = new AudioContext({ sampleRate: 16000 });
+  mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    audioContext = new (window.AudioContext || window.webkitAudioContext)({
-      sampleRate: 16000
-    });
+  const source = audioContext.createMediaStreamSource(mediaStream);
+  processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-    // 🔴【关键】iOS / Safari 必须手动 resume
-    if (audioContext.state === "suspended") {
-      await audioContext.resume();
-    }
+  processor.onaudioprocess = e => {
+    data.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
 
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  source.connect(processor);
+  processor.connect(audioContext.destination);
 
-    input = audioContext.createMediaStreamSource(stream);
-    processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-    processor.onaudioprocess = e => {
-      audioData.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-    };
-
-    input.connect(processor);
-    processor.connect(audioContext.destination);
-
-    status.innerText = "录音中…";
-
-  } catch (err) {
-    status.innerText = "无法访问麦克风";
-    alert("无法访问麦克风，请检查浏览器麦克风权限");
-    console.error(err);
-  }
+  recording = true;
+  btn.classList.add("recording");
+  btn.innerText = "⏹ 停止录音";
+  status.innerText = "录音中…";
+  scores.innerHTML = "";
 }
 
-/* ===== 停止录音 ===== */
-function stopRecording() {
-  if (!audioContext) return;
-
+function stop() {
   processor.disconnect();
-  input.disconnect();
-  stream.getTracks().forEach(t => t.stop());
-
-  const wavBlob = encodeWAV(audioData, audioContext.sampleRate);
-  player.src = URL.createObjectURL(wavBlob);
-
-  status.innerText = "测评中…";
-  sendToAzure(wavBlob);
-
+  mediaStream.getTracks().forEach(t => t.stop());
   audioContext.close();
-  audioContext = null;
+
+  const wav = encodeWAV(data, 16000);
+  player.src = URL.createObjectURL(wav);
+
+  recording = false;
+  btn.classList.remove("recording");
+  btn.innerText = "🎤 开始录音";
+
+  send(wav);
 }
 
-/* ===== WAV 编码（16k PCM） ===== */
+/* ========= WAV 编码 ========= */
 function encodeWAV(buffers, sampleRate) {
   let length = buffers.reduce((s, b) => s + b.length, 0);
   let pcm = new Int16Array(length);
@@ -215,38 +160,31 @@ function encodeWAV(buffers, sampleRate) {
   return new Blob([view], { type: "audio/wav" });
 }
 
-/* ===== 发送到 Render / Azure ===== */
-async function sendToAzure(wavBlob) {
+/* ========= 发送测评 ========= */
+async function send(wav) {
+  status.innerText = "测评中…";
+
   try {
     const res = await fetch(
-      "https://anki-pronunciation.onrender.com/assess?text=" +
-        encodeURIComponent(word),
-      { method: "POST", body: wavBlob }
+      "/assess?text=" + encodeURIComponent(word),
+      { method: "POST", body: wav }
     );
 
-    const data = await res.json();
-    const pa = data.NBest?.[0]?.PronunciationAssessment;
-
-    if (!pa) {
-      status.innerText = "测评失败";
-      return;
-    }
-
-    const acc = Math.round(pa.AccuracyScore || 0);
-    const flu = Math.round(pa.FluencyScore || 0);
-    const comp = Math.round(pa.CompletenessScore || 0);
-    const total = Math.round((acc + flu + comp) / 3);
+    const json = await res.json();
+    const pa = json?.NBest?.[0]?.PronunciationAssessment;
+    if (!pa) throw 1;
 
     status.innerText = "测评完成";
-    scoresDiv.innerHTML = `
-      <strong>总分：${total}</strong><br>
-      准确度：${acc} ｜ 流利度：${flu} ｜ 完整度：${comp}
+    scores.innerHTML = `
+      Accuracy: ${Math.round(pa.AccuracyScore)}<br>
+      Fluency: ${Math.round(pa.FluencyScore)}<br>
+      Completeness: ${Math.round(pa.CompletenessScore)}
     `;
-  } catch (e) {
+  } catch {
     status.innerText = "测评失败";
-    console.error(e);
   }
 }
 </script>
+
 </body>
 </html>
