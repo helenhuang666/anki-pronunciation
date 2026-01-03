@@ -4,6 +4,7 @@ import fetch from "node-fetch";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
+import sdk from "microsoft-cognitiveservices-speech-sdk";
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -79,6 +80,7 @@ app.post("/tts", async (req, res) => {
 
 // ===== 发音测评接口 =====
 app.post("/assess", async (req, res) => {
+  let recognizer = null;
   try {
     const text = req.query.text;
     if (!text) {
@@ -92,58 +94,79 @@ app.post("/assess", async (req, res) => {
       return res.status(500).json({ error: "Azure config missing" });
     }
 
-    const endpoint =
-      `https://${AZURE_REGION}.stt.speech.microsoft.com/` +
-      `speech/recognition/conversation/cognitiveservices/v1?language=en-US&format=detailed`;
+    console.log(`[ASSESS-SDK] Request for '${text}', body size: ${req.body ? req.body.length : 0}`);
 
-    const paConfig = {
-      ReferenceText: text,
-      GradingSystem: "HundredMark",
-      Granularity: "Phoneme",
-      Dimension: "Comprehensive"
-    };
-
-    const paHeader = Buffer
-      .from(JSON.stringify(paConfig))
-      .toString("base64");
-
-    console.log(`[ASSESS] Received request for '${text}', body size: ${req.body ? req.body.length : 0}`);
-
-    if (req.body instanceof Buffer === false) {
-      console.log("[ASSESS] Warning: req.body is not a Buffer");
+    if (!(req.body instanceof Buffer)) {
+      return res.status(400).json({ error: "Body must be a buffer" });
     }
 
-    const azureRes = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": AZURE_KEY,
-        "Content-Type": "audio/wav; codecs=audio/pcm; samplerate=16000",
-        "Pronunciation-Assessment": paHeader,
-        "Accept": "application/json;text/xml"
+    // 1. Setup Audio Stream
+    const pushStream = sdk.AudioInputStream.createPushStream();
+    pushStream.write(req.body);
+    pushStream.close();
+
+    const audioConfig = sdk.AudioConfig.fromStreamInput(pushStream);
+    const speechConfig = sdk.SpeechConfig.fromSubscription(AZURE_KEY, AZURE_REGION);
+
+    // 2. Configure Assessment
+    speechConfig.speechRecognitionLanguage = "en-US";
+    speechConfig.outputFormat = sdk.OutputFormat.Detailed; // REQUEST Detailed JSON
+
+    const pronunciationAssessmentConfig = new sdk.PronunciationAssessmentConfig(
+      text,
+      sdk.PronunciationAssessmentGradingSystem.HundredMark,
+      sdk.PronunciationAssessmentGranularity.Phoneme,
+      true // enableMiscue
+    );
+    // Explicitly set dimension to Comprehensive to get proper scores
+    // Note: The JS SDK constructor usually sets this default, but we rely on the config object.
+
+    recognizer = new sdk.SpeechRecognizer(speechConfig, audioConfig);
+    pronunciationAssessmentConfig.applyTo(recognizer);
+
+    // 3. Recognize
+    recognizer.recognizeOnceAsync(
+      (result) => {
+        // Log basic result info
+        // console.log(`[ASSESS-SDK] Reason: ${result.reason}`);
+
+        let jsonStr = result.properties.getProperty(sdk.PropertyId.SpeechServiceResponse_JsonResult);
+
+        if (!jsonStr) {
+          // Fallback if no JSON (e.g. Canceled/NoMatch without JSON)
+          // We construct a mock response to allow frontend to see the error
+          return res.json({
+            RecognitionStatus: result.reason === sdk.ResultReason.RecognizedSpeech ? "Success" : result.errorDetails || "NoMatch",
+            NBest: []
+          });
+        }
+
+        try {
+          const json = JSON.parse(jsonStr);
+          res.json(json);
+        } catch (e) {
+          console.error("[ASSESS-SDK] JSON Parse Failed", e);
+          res.status(500).json({ error: "Invalid JSON from SDK" });
+        }
+
+        recognizer.close();
+        recognizer = null;
       },
-      body: req.body
-    });
-
-    const textRes = await azureRes.text();
-    console.log(`[ASSESS] Azure status: ${azureRes.status}`);
-    // console.log(`[ASSESS] Azure response: ${textRes}`); // Uncomment for full debug
-
-    if (!azureRes.ok) {
-      return res.status(azureRes.status).json({ error: "Azure Error", details: textRes });
-    }
-
-    let json;
-    try {
-      json = JSON.parse(textRes);
-    } catch (e) {
-      console.error("[ASSESS] Failed to parse Azure JSON response", textRes);
-      return res.status(500).json({ error: "Invalid Azure Response", raw: textRes });
-    }
-
-    res.json(json);
+      (err) => {
+        console.error("[ASSESS-SDK] Error: " + err);
+        res.status(500).json({ error: "SDK Error: " + err });
+        if (recognizer) {
+          recognizer.close();
+          recognizer = null;
+        }
+      }
+    );
 
   } catch (e) {
     console.error("ASSESS ERROR:", e);
+    if (recognizer) {
+      recognizer.close();
+    }
     res.status(500).json({ error: "Assessment failed" });
   }
 });
