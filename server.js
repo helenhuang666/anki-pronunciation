@@ -32,8 +32,9 @@ app.get("/manifest.json", (req, res) => {
   res.sendFile(path.join(__dirname, "manifest.json"));
 });
 
-// ===== TTS 接口 (生成音素发音) =====
+// ===== TTS 接口 (生成音素发音 - 使用 SDK) =====
 app.post("/tts", async (req, res) => {
+  let synthesizer = null;
   try {
     const { ssml } = req.body;
     if (!ssml) {
@@ -47,33 +48,39 @@ app.post("/tts", async (req, res) => {
       return res.status(500).json({ error: "Azure config missing" });
     }
 
-    const endpoint = `https://${AZURE_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`;
+    const speechConfig = sdk.SpeechConfig.fromSubscription(AZURE_KEY, AZURE_REGION);
+    // 设置输出格式为 WAV (Riff16Khz16BitMonoPcm)
+    speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm;
 
-    const azureRes = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": AZURE_KEY,
-        "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "riff-16khz-16bit-mono-pcm",
-        "User-Agent": "AnkiPronunciation"
+    synthesizer = new sdk.SpeechSynthesizer(speechConfig, null); // null audio config means no default speaker output
+
+    synthesizer.speakSsmlAsync(
+      ssml,
+      (result) => {
+        if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+          const audioBuffer = Buffer.from(result.audioData);
+          res.set("Content-Type", "audio/wav");
+          res.send(audioBuffer);
+        } else {
+          console.error("[TTS-SDK] Failed:", result.errorDetails);
+          res.status(500).json({ error: "TTS Synthesis Failed", details: result.errorDetails });
+        }
+        synthesizer.close();
+        synthesizer = null;
       },
-      body: ssml
-    });
-
-    if (!azureRes.ok) {
-      const errText = await azureRes.text();
-      console.error("TTS Azure Error:", errText);
-      return res.status(azureRes.status).send(errText);
-    }
-
-    const arrayBuffer = await azureRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    res.set("Content-Type", "audio/wav");
-    res.send(buffer);
+      (err) => {
+        console.error("[TTS-SDK] Error:", err);
+        res.status(500).json({ error: "TTS SDK Error", details: err });
+        synthesizer.close();
+        synthesizer = null;
+      }
+    );
 
   } catch (e) {
     console.error("TTS ERROR:", e);
+    if (synthesizer) {
+      synthesizer.close();
+    }
     res.status(500).json({ error: "TTS failed" });
   }
 });
