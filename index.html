@@ -325,48 +325,60 @@
     const starsEl = document.getElementById("stars");
     const tipBox = document.getElementById("tip-box");
 
+    // ===== 常见辅音组合预设 (解决切割不准问题) =====
+    const COMMON_CLUSTERS = [
+      "th", "sh", "ch", "ph", "gh", "ck", "wh", "ng", "qu", "oo", "ea", "ai", "ou", "ee"
+    ];
+
     /* ===== Heuristic Alignment Logic ===== */
     function alignLettersToPhonemes(word, phonemes) {
-      const letters = word.toLowerCase().split('');
+      const letters = word.toLowerCase();
       const aligned = [];
       let letterIndex = 0;
       const pCount = phonemes.length;
 
-      // 处理用户传入的 USPhonetic 音标字符串 (例如 "/ɪɡ'zæmpl/")
       let userPhonemes = null;
       if (userIpa) {
-        // 去掉前后的斜杠，然后按空格切分。例如：/ih g z ae m p ax l/ -> ["ih", "g", "z", "ae", "m", "p", "ax", "l"]
         const clean = userIpa.trim().replace(/^\/|\/$/g, '');
         const parts = clean.split(/\s+/).filter(Boolean);
-        // 只要有内容，我们就尝试按索引对齐显示
         userPhonemes = parts;
       }
 
       phonemes.forEach((ph, i) => {
-        // 1. 获取要显示的音标：如果有用户音标，按索引拿；没有则拿 Azure 返回的音标并转换
         let displayPh = convertUsToIpa(ph.Phoneme);
         if (userPhonemes && userPhonemes[i]) {
           displayPh = userPhonemes[i];
         }
 
-        // 2. 字母对齐
+        // 2. 增强型字母对齐
         const remainingPhonemes = pCount - i;
         const remainingLetters = letters.length - letterIndex;
-        let chunkSize = Math.ceil(remainingLetters / remainingPhonemes);
-        if (remainingLetters - chunkSize < remainingPhonemes - 1) {
-          chunkSize = 1;
+        let chunkSize = 1;
+
+        if (remainingPhonemes === 1) {
+          // 最后一个音素拿走剩下所有字母
+          chunkSize = remainingLetters;
+        } else {
+          // 如果当前的音素对应到辅音，且后面跟着常见辅音组合，尝试合并
+          const nextTwo = letters.substr(letterIndex, 2);
+          if (COMMON_CLUSTERS.includes(nextTwo) && remainingLetters > 2) {
+            chunkSize = 2;
+          } else {
+            // 默认分配权重
+            chunkSize = Math.ceil(remainingLetters / remainingPhonemes);
+          }
         }
 
-        // 保护：如果 chunkSize 导致越界，取剩余所有
-        if (letterIndex + chunkSize > word.length) {
-          chunkSize = word.length - letterIndex;
+        // 越界检查
+        if (letterIndex + chunkSize > letters.length) {
+          chunkSize = letters.length - letterIndex;
         }
 
         const chunk = word.substr(letterIndex, chunkSize);
 
         aligned.push({
-          phoneme: displayPh, // 界面显示的音标
-          azurePhoneme: ph.Phoneme, // 传给 TTS/Tips 的原始音素
+          phoneme: displayPh,
+          azurePhoneme: ph.Phoneme,
           score: ph.PronunciationAssessment?.AccuracyScore || 0,
           letters: chunk
         });
@@ -398,7 +410,6 @@
         }
       });
 
-      // 更新顶部的总音标显示（如果初始为空）
       if (!targetIpaEl.innerText || targetIpaEl.innerText === "//") {
         targetIpaEl.innerText = `/${displayPhonemesList.join(' ')}/`;
       }
@@ -421,7 +432,6 @@
 
         const iDiv = document.createElement("div");
         iDiv.className = "bar-ipa";
-        // 确保显示带斜杠的音标片段
         iDiv.innerText = `/${item.phoneme.replace(/\//g, '')}/`;
 
         const sDiv = document.createElement("div");
@@ -437,24 +447,29 @@
 
     // Play Phoneme
     async function playPhoneme(ttsPhoneme, displayPhoneme) {
-      // 先尝试根据显示音标或 Azure 原始音素找提示
       const tip = PhonemeTips[displayPhoneme] || PhonemeTips[convertUsToIpa(ttsPhoneme)] || PhonemeTips[ttsPhoneme];
       if (tip) {
         showTip(displayPhoneme, tip);
       }
 
       try {
-        // Generate SSML with the AZURE phoneme (standard IPA)
         const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
       <voice name="en-US-AvaMultilingualNeural">
         <phoneme alphabet="ipa" ph="${ttsPhoneme}"> ${ttsPhoneme} </phoneme>
       </voice>
     </speak>`;
 
-        const res = await fetch("/tts", {
+        // 强制使用绝对路径确保请求到达后端
+        const apiUrl = window.location.origin + "/tts";
+
+        const res = await fetch(apiUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ssml })
+        }).catch(netErr => {
+          console.error("Fetch Error:", netErr);
+          alert("网络请求被拦截，请检查是否处于 Anki 离线环境或防火墙设置。");
+          throw netErr;
         });
 
         if (res.ok) {
@@ -463,21 +478,18 @@
           const audio = new Audio();
           audio.src = audioUrl;
 
-          // 显式加载并尝试播放
           audio.load();
           audio.play().catch(e => {
-            console.warn("Autoplay blocked or playback error:", e);
-            // 在 UI 上给个小提示
+            console.warn("Autoplay blocked:", e);
             statusLabel.innerText = "点击竖条试听";
           });
         } else {
-          const err = await res.json();
-          console.error("TTS Failed:", err);
-          alert(`发音失败: ${err.reason || "未知原因"}`);
+          const err = await res.json().catch(() => ({}));
+          console.error("TTS Backend Failed:", res.status, err);
+          alert(`发音失败 (HTTP ${res.status}): ${err.reason || "请检查云端密钥配置"}`);
         }
       } catch (e) {
-        console.error("TTS Error:", e);
-        alert("网络问题导致发音失败");
+        console.error("TTS Final Error:", e);
       }
     }
 
