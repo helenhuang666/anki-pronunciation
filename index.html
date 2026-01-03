@@ -298,11 +298,26 @@
         );
 
         const data = await res.json();
+
+        if (data.error) {
+          console.error("Server Error:", data);
+          status.innerText = `Error: ${data.error}`;
+          if (data.details) alert("Azure Error Details: " + data.details);
+          return;
+        }
+
         const nbest = data.NBest?.[0]; // 取最匹配的结果
         const pa = nbest?.PronunciationAssessment;
 
         if (!pa) {
-          status.innerText = "测评失败 (无结果)";
+          console.warn("No NBest result:", data);
+          const recogStatus = data.RecognitionStatus;
+          status.innerText = `测评无结果 (${recogStatus || "Unknown"})`;
+          if (recogStatus === "NoMatch") {
+            alert("未检测到语音，请调大音量或检查麦克风。");
+          } else {
+            alert("未返回评分结果。Status: " + recogStatus);
+          }
           return;
         }
 
@@ -322,8 +337,9 @@
         renderPhonemes(nbest);
 
       } catch (e) {
-        status.innerText = "测评失败";
+        status.innerText = "测评失败 (网络/代码错误)";
         console.error(e);
+        alert("发生错误: " + e.message);
       }
     }
 
