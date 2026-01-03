@@ -330,99 +330,78 @@
       "th", "sh", "ch", "ph", "gh", "ck", "wh", "ng", "qu", "oo", "ea", "ai", "ou", "ee"
     ];
 
-    /* ===== 增强型字母-音素对齐逻辑 ===== */
+    /* ===== 增强型字母-音素对齐逻辑 (支持单字母多音素合并) ===== */
     function alignLettersToPhonemes(word, phonemes) {
       const letters = word.toLowerCase();
-      const aligned = [];
+      const alignedGroups = [];
       let letterIndex = 0;
       const pCount = phonemes.length;
 
-      let userPhonemes = null;
-      if (userIpa) {
-        const clean = userIpa.trim().replace(/^\/|\/$/g, '');
-        const parts = clean.split(/\s+/).filter(Boolean);
-        userPhonemes = parts;
-      }
-
-      // 预处理音素列表以便索引
+      // 转换所有音素为小写便于匹配
       const phList = phonemes.map(p => p.Phoneme.toLowerCase());
 
       for (let i = 0; i < pCount; i++) {
         const ph = phonemes[i];
         let displayPh = convertUsToIpa(ph.Phoneme);
-        if (userPhonemes && userPhonemes[i]) displayPh = userPhonemes[i];
 
         let chunkSize = 1;
-        const remainingLetters = letters.length - letterIndex;
+        let phonemeSpan = 1; // 这个字母占据了几个音素
         const curLetter = letters[letterIndex];
 
-        // --- 特殊规则处理 ---
+        // --- 特殊规则：合并显示 ---
 
-        // 1. 处理 'x' 映射为 /g z/ 或 /k s/ (占两个音素)
-        if (curLetter === 'x') {
+        // 1. 处理 'x' (通常对应 /g z/ 或 /k s/)
+        if (curLetter === 'x' && i + 1 < pCount) {
           const nextPh = phList[i + 1];
-          if (phList[i] === 'g' && nextPh === 'z' || phList[i] === 'k' && nextPh === 's') {
-            // 这个 'x' 负责了当前的和下一个音素
-            // 逻辑处理：将 'x' 分配给第一个，第二个音素分配空字符
-            aligned.push({
-              phoneme: displayPh,
-              azurePhoneme: ph.Phoneme,
-              score: ph.PronunciationAssessment?.AccuracyScore || 0,
-              letters: "x"
+          if ((phList[i] === 'g' && nextPh === 'z') || (phList[i] === 'k' && nextPh === 's')) {
+            // 合并显示：x 对应 /gz/ 或 /ks/
+            const nextPhObj = phonemes[i + 1];
+            alignedGroups.push({
+              letters: "x",
+              phonemes: [ph, nextPhObj], // 存储原始对象供点击发音使用
+              displayPh: convertUsToIpa(ph.Phoneme) + convertUsToIpa(nextPhObj.Phoneme),
+              score: Math.min(ph.PronunciationAssessment?.AccuracyScore || 0, nextPhObj.PronunciationAssessment?.AccuracyScore || 0)
             });
             letterIndex += 1;
+            i += 1; // 跳过下一个音素
             continue;
           }
         }
 
-        // 如果上一个是 'x' 且触发了双音素逻辑，当前 i 对应的其实是 z 或 s
-        // 我们判断是不是刚处理完 x 对应的 gz 中的 z
-        const lastItem = aligned[aligned.length - 1];
-        if (lastItem && lastItem.letters === "x" && (phList[i] === 'z' || phList[i] === 's')) {
-          aligned.push({
-            phoneme: displayPh,
-            azurePhoneme: ph.Phoneme,
-            score: ph.PronunciationAssessment?.AccuracyScore || 0,
-            letters: "" // 置空，因为 x 已经显示过了
-          });
-          continue;
-        }
-
-        // 2. 处理结尾的 'le' -> /l/
+        // 2. 处理结尾的 'le' -> /l/ (多字母对应一音素)
+        const remainingLetters = letters.length - letterIndex;
         if (i === pCount - 1 && remainingLetters >= 2 && letters.endsWith("le") && phList[i] === "l") {
           chunkSize = remainingLetters;
         }
-        // 3. 处理组合字母 (th, sh 等)
+        // 3. 处理辅音组合 (th, sh 等)
         else if (COMMON_CLUSTERS.includes(letters.substr(letterIndex, 2)) && remainingLetters > 2) {
           chunkSize = 2;
         }
-        // 4. 兜底逻辑
+        // 4. 默认权重
         else {
-          chunkSize = Math.ceil(remainingLetters / (pCount - i));
+          chunkSize = Math.max(1, Math.ceil(remainingLetters / (pCount - i)));
         }
 
-        // 越界检查
         if (letterIndex + chunkSize > letters.length) chunkSize = letters.length - letterIndex;
-
         const chunk = word.substr(letterIndex, chunkSize);
-        aligned.push({
-          phoneme: displayPh,
-          azurePhoneme: ph.Phoneme,
-          score: ph.PronunciationAssessment?.AccuracyScore || 0,
-          letters: chunk
+
+        alignedGroups.push({
+          letters: chunk,
+          phonemes: [ph],
+          displayPh: displayPh,
+          score: ph.PronunciationAssessment?.AccuracyScore || 0
         });
 
         letterIndex += chunkSize;
       }
 
-      return aligned;
+      return alignedGroups;
     }
 
     /* ===== Render UI ===== */
     function renderResult(nbest) {
       scoreHeader.style.opacity = "1";
-      const pa = nbest.PronunciationAssessment;
-      const acc = Math.round(pa.AccuracyScore || 0);
+      const acc = Math.round(nbest.PronunciationAssessment.AccuracyScore || 0);
       mainScoreEl.innerHTML = `${acc}<span class="score-unit">分</span>`;
 
       const starCount = Math.round(acc / 20);
@@ -445,23 +424,24 @@
 
       const alignedData = alignLettersToPhonemes(targetWord, targetPhonemes);
       barsContainer.innerHTML = "";
-      alignedData.forEach(item => {
-        const score = item.score;
+      alignedData.forEach(group => {
+        const score = group.score;
         let colorClass = "bg-poor";
         if (score >= 80) colorClass = "bg-good";
         else if (score >= 60) colorClass = "bg-fair";
 
         const div = document.createElement("div");
         div.className = "bar-group";
-        div.onclick = () => playPhoneme(item.azurePhoneme, item.phoneme);
+        // 如果包含多个音素，点击时播放第一个（或可扩展为顺序播放）
+        div.onclick = () => playPhoneme(group.phonemes[0].Phoneme, group.displayPh);
 
         const lDiv = document.createElement("div");
         lDiv.className = "bar-letter";
-        lDiv.innerText = item.letters;
+        lDiv.innerText = group.letters;
 
         const iDiv = document.createElement("div");
         iDiv.className = "bar-ipa";
-        iDiv.innerText = `/${item.phoneme.replace(/\//g, '')}/`;
+        iDiv.innerText = `/${group.displayPh}/`;
 
         const sDiv = document.createElement("div");
         sDiv.className = `bar-score ${colorClass}`;
