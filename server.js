@@ -1,4 +1,4 @@
-
+import "dotenv/config";
 import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
@@ -39,8 +39,8 @@ app.post("/tts", async (req, res) => {
       return res.status(400).json({ error: "Missing SSML" });
     }
 
-    const AZURE_KEY = process.env.AZURE_SPEECH_KEY;
-    const AZURE_REGION = process.env.AZURE_SPEECH_REGION;
+    const AZURE_KEY = process.env.AZURE_KEY;
+    const AZURE_REGION = process.env.AZURE_REGION;
 
     if (!AZURE_KEY || !AZURE_REGION) {
       return res.status(500).json({ error: "Azure config missing" });
@@ -85,8 +85,8 @@ app.post("/assess", async (req, res) => {
       return res.status(400).json({ error: "Missing text" });
     }
 
-    const AZURE_KEY = process.env.AZURE_SPEECH_KEY;
-    const AZURE_REGION = process.env.AZURE_SPEECH_REGION;
+    const AZURE_KEY = process.env.AZURE_KEY;
+    const AZURE_REGION = process.env.AZURE_REGION;
 
     if (!AZURE_KEY || !AZURE_REGION) {
       return res.status(500).json({ error: "Azure config missing" });
@@ -151,4 +151,12 @@ app.post("/assess", async (req, res) => {
 // ===== 启动 =====
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
+  const key = process.env.AZURE_KEY;
+  const region = process.env.AZURE_REGION;
+  console.log("Azure Region:", region || "(missing)");
+  console.log("Azure Key:", key ? "(set)" : "(missing)");
+
+  if (!key || !region) {
+    console.warn("WARNING: Azure Speech credentials are NOT set. /assess and /tts will fail.");
+  }
 });
