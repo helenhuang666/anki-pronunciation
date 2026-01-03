@@ -1,9 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <title>Anki Pronunciation</title>
+
   <style>
     body {
       margin: 0;
@@ -11,21 +14,25 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: transparent;
     }
+
     .card {
       padding: 12px;
     }
+
     #word {
       text-align: center;
       font-size: 26px;
       font-weight: 600;
       margin-bottom: 4px;
     }
+
     #ipa {
       text-align: center;
       font-size: 16px;
       color: #666;
       margin-bottom: 10px;
     }
+
     button {
       width: 100%;
       padding: 12px;
@@ -35,26 +42,31 @@
       background: #1976ff;
       color: #fff;
     }
+
     button:active {
       background: #1258c7;
     }
+
     #status {
       text-align: center;
       font-size: 12px;
       color: #666;
       margin: 8px 0;
     }
+
     audio {
       width: 100%;
       margin-top: 6px;
       accent-color: #1976ff;
     }
+
     #scores {
       margin-top: 8px;
       font-size: 14px;
       line-height: 1.5;
       text-align: center;
     }
+
     #ipa-container {
       display: flex;
       justify-content: center;
@@ -62,6 +74,7 @@
       gap: 8px;
       margin-bottom: 20px;
     }
+
     .phoneme {
       font-size: 20px;
       padding: 8px 12px;
@@ -71,28 +84,35 @@
       transition: all 0.2s;
       user-select: none;
     }
+
     .phoneme:hover {
       transform: scale(1.1);
     }
+
     .phoneme.selected {
       outline: 2px solid #333;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
+
     .phoneme.good {
       color: #2e7d32;
       background: #e8f5e9;
     }
+
     /* Green */
     .phoneme.fair {
       color: #f57f17;
       background: #fffde7;
     }
+
     /* Yellow/Orange */
     .phoneme.poor {
       color: #c62828;
       background: #ffebee;
     }
+
     /* Red */
+
     #tip-box {
       margin: 10px auto;
       padding: 12px;
@@ -107,26 +127,36 @@
     }
   </style>
 </head>
+
 <body>
   <div class="card">
     <div id="word"></div>
     <!-- 音标容器，改为 flex 布局以便放置可点击的音素 -->
     <div id="ipa-container"></div>
+
     <div id="tip-box" style="display:none;"></div>
+
     <button id="recordBtn">🎤 开始录音</button>
+
     <div id="status">准备就绪</div>
+
     <audio id="player" controls></audio>
+
     <div id="scores"></div>
   </div>
+
   <script type="module">
     import { PhonemeTips } from "./phoneme_tips.js";
+
     /* ===== 读取 Anki / URL 参数 ===== */
     const params = new URLSearchParams(window.location.search);
     const word = params.get("word") || "example";
     // 也可以传入预置音标，但主要依靠 Azure 返回的音素
     const initialIpa = params.get("ipa") || "";
+
     document.getElementById("word").innerText = word;
     // document.getElementById("ipa").innerText = ipa; // 旧的逻辑，不再直接显示纯文本
+
     /* ===== 录音相关变量 ===== */
     let audioContext = null;
     let processor = null;
@@ -134,16 +164,19 @@
     let stream = null;
     let audioData = [];
     let recording = false;
+
     const recordBtn = document.getElementById("recordBtn");
     const status = document.getElementById("status");
     const player = document.getElementById("player");
     const scoresDiv = document.getElementById("scores");
     const ipaContainer = document.getElementById("ipa-container");
     const tipBox = document.getElementById("tip-box");
+
     /* ===== 初始化显示 (如果有传入音标，先简单显示，评测后覆盖) ===== */
     if (initialIpa) {
       ipaContainer.innerText = `[${initialIpa}]`;
     }
+
     /* ===== 点击开始 / 停止 ===== */
     recordBtn.onclick = async () => {
       if (!recording) {
@@ -159,61 +192,80 @@
         recording = false;
       }
     };
+
     /* ===== 开始录音（Safari 必须 resume） ===== */
     async function startRecording() {
       try {
         audioData = [];
         scoresDiv.innerHTML = "";
+
         audioContext = new (window.AudioContext || window.webkitAudioContext)({
           sampleRate: 16000
         });
+
         // 🔴【关键】iOS / Safari 必须手动 resume
         if (audioContext.state === "suspended") {
           await audioContext.resume();
         }
+
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
         input = audioContext.createMediaStreamSource(stream);
         processor = audioContext.createScriptProcessor(4096, 1, 1);
+
         processor.onaudioprocess = e => {
           audioData.push(new Float32Array(e.inputBuffer.getChannelData(0)));
         };
+
         input.connect(processor);
         processor.connect(audioContext.destination);
+
         status.innerText = "录音中…";
+
       } catch (err) {
         status.innerText = "无法访问麦克风";
         alert("无法访问麦克风，请检查浏览器麦克风权限");
         console.error(err);
       }
     }
+
     /* ===== 停止录音 ===== */
     function stopRecording() {
       if (!audioContext) return;
+
       processor.disconnect();
       input.disconnect();
       stream.getTracks().forEach(t => t.stop());
+
       const wavBlob = encodeWAV(audioData, audioContext.sampleRate);
       player.src = URL.createObjectURL(wavBlob);
+
       status.innerText = "测评中…";
       sendToAzure(wavBlob);
+
       audioContext.close();
       audioContext = null;
     }
+
     /* ===== WAV 编码（16k PCM） ===== */
     function encodeWAV(buffers, sampleRate) {
       let length = buffers.reduce((s, b) => s + b.length, 0);
       let pcm = new Int16Array(length);
       let offset = 0;
+
       buffers.forEach(b => {
         for (let i = 0; i < b.length; i++, offset++) {
           pcm[offset] = Math.max(-1, Math.min(1, b[i])) * 0x7fff;
         }
       });
+
       const buffer = new ArrayBuffer(44 + pcm.length * 2);
       const view = new DataView(buffer);
+
       function write(o, s) {
         for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i));
       }
+
       write(0, "RIFF");
       view.setUint32(4, 36 + pcm.length * 2, true);
       write(8, "WAVE");
@@ -227,13 +279,16 @@
       view.setUint16(34, 16, true);
       write(36, "data");
       view.setUint32(40, pcm.length * 2, true);
+
       let p = 44;
       pcm.forEach(v => {
         view.setInt16(p, v, true);
         p += 2;
       });
+
       return new Blob([view], { type: "audio/wav" });
     }
+
     /* ===== 发送到 Render / Azure ===== */
     async function sendToAzure(wavBlob) {
       try {
@@ -241,64 +296,82 @@
           "/assess?text=" + encodeURIComponent(word),
           { method: "POST", body: wavBlob }
         );
+
         const data = await res.json();
         const nbest = data.NBest?.[0]; // 取最匹配的结果
         const pa = nbest?.PronunciationAssessment;
+
         if (!pa) {
           status.innerText = "测评失败 (无结果)";
           return;
         }
+
         // 1. 显示总分
         const acc = Math.round(pa.AccuracyScore || 0);
         const flu = Math.round(pa.FluencyScore || 0);
         const comp = Math.round(pa.CompletenessScore || 0);
         const total = Math.round((acc + flu + comp) / 3);
+
         status.innerText = "测评完成";
         scoresDiv.innerHTML = `
       <strong>总分：${total}</strong><br>
       准确度：${acc} ｜ 流利度：${flu} ｜ 完整度：${comp}
     `;
+
         // 2. 渲染音素级结果
         renderPhonemes(nbest);
+
       } catch (e) {
         status.innerText = "测评失败";
         console.error(e);
       }
     }
+
     /* ===== 渲染音素 UI ===== */
     function renderPhonemes(nbestData) {
       ipaContainer.innerHTML = "";
+
       // Azure 返回结构： Words -> Phonemes
       const words = nbestData.Words || [];
+
       words.forEach(w => {
         const phonemes = w.Phonemes || [];
+
         phonemes.forEach(p => {
           const phText = p.Phoneme;
           const phScore = p.PronunciationAssessment?.AccuracyScore || 0;
+
           const el = document.createElement("span");
           el.className = "phoneme";
           el.innerText = phText;
+
           // 颜色编码
           if (phScore >= 80) el.classList.add("good");
           else if (phScore >= 60) el.classList.add("fair");
           else el.classList.add("poor");
+
           // 点击事件
           el.onclick = () => handlePhonemeClick(phText, el);
+
           ipaContainer.appendChild(el);
         });
+
         // 单词间加个空格（如果需要）
         // ipaContainer.appendChild(document.createTextNode(" "));
       });
     }
+
     /* ===== 处理音素点击：播放 TTS + 显示提示 ===== */
     async function handlePhonemeClick(phoneme, element) {
       // 1. 显示提示
       const tip = PhonemeTips[phoneme] || "暂无该音素的发音技巧提示。";
       tipBox.innerText = `${phoneme} : ${tip}`;
       tipBox.style.display = "block";
+
       // 高亮当前选中的音素
       document.querySelectorAll(".phoneme").forEach(e => e.classList.remove("selected"));
       element.classList.add("selected");
+
       // 2. 调用 TTS 播放
       try {
         const ssml = `
@@ -308,12 +381,15 @@
         </voice>
       </speak>
     `;
+
         // 播放提示音或loading状态？暂时不需要
+
         const res = await fetch("/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ssml })
         });
+
         if (res.ok) {
           const blob = await res.blob();
           const audioUrl = URL.createObjectURL(blob);
@@ -328,4 +404,5 @@
     }
   </script>
 </body>
+
 </html>
