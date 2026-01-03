@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
 app.use(cors());
 app.use(express.static(__dirname));
 app.use(express.raw({
-  type: ["audio/wav", "application/octet-stream"],
+  type: "*/*", // allow any type just to be safe and capture the body
   limit: "10mb"
 }));
 app.use(express.json());
@@ -107,18 +107,39 @@ app.post("/assess", async (req, res) => {
       .from(JSON.stringify(paConfig))
       .toString("base64");
 
+    console.log(`[ASSESS] Received request for '${text}', body size: ${req.body ? req.body.length : 0}`);
+
+    if (req.body instanceof Buffer === false) {
+      console.log("[ASSESS] Warning: req.body is not a Buffer");
+    }
+
     const azureRes = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Ocp-Apim-Subscription-Key": AZURE_KEY,
         "Content-Type": "audio/wav; codecs=audio/pcm; samplerate=16000",
-        "Pronunciation-Assessment": paHeader
+        "Pronunciation-Assessment": paHeader,
+        "Accept": "application/json;text/xml"
       },
       body: req.body
     });
 
     const textRes = await azureRes.text();
-    const json = JSON.parse(textRes);
+    console.log(`[ASSESS] Azure status: ${azureRes.status}`);
+    // console.log(`[ASSESS] Azure response: ${textRes}`); // Uncomment for full debug
+
+    if (!azureRes.ok) {
+      return res.status(azureRes.status).json({ error: "Azure Error", details: textRes });
+    }
+
+    let json;
+    try {
+      json = JSON.parse(textRes);
+    } catch (e) {
+      console.error("[ASSESS] Failed to parse Azure JSON response", textRes);
+      return res.status(500).json({ error: "Invalid Azure Response", raw: textRes });
+    }
+
     res.json(json);
 
   } catch (e) {
