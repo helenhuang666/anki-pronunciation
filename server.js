@@ -44,6 +44,9 @@ app.post("/tts", async (req, res) => {
     const AZURE_KEY = process.env.AZURE_KEY;
     const AZURE_REGION = process.env.AZURE_REGION;
 
+    console.log(`[TTS-DEBUG] Region: ${AZURE_REGION}, Key status: ${AZURE_KEY ? 'Set' : 'Missing'}`);
+    console.log(`[TTS-DEBUG] SSML: ${ssml}`);
+
     if (!AZURE_KEY || !AZURE_REGION) {
       return res.status(500).json({ error: "Azure config missing" });
     }
@@ -58,30 +61,28 @@ app.post("/tts", async (req, res) => {
       ssml,
       (result) => {
         if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+          console.log("[TTS-DEBUG] Success! Audio data length:", result.audioData.byteLength);
           const audioBuffer = Buffer.from(result.audioData);
           res.set("Content-Type", "audio/wav");
           res.send(audioBuffer);
         } else {
-          console.error("[TTS-SDK] Failed:", result.errorDetails);
-          res.status(500).json({ error: "TTS Synthesis Failed", details: result.errorDetails });
+          console.error("[TTS-DEBUG] Failed! Reason:", result.reason, "Details:", result.errorDetails);
+          res.status(500).json({ error: "TTS Failed", reason: result.reason, details: result.errorDetails });
         }
         synthesizer.close();
         synthesizer = null;
       },
       (err) => {
-        console.error("[TTS-SDK] Error:", err);
+        console.error("[TTS-DEBUG] SDK Generic Error:", err);
         res.status(500).json({ error: "TTS SDK Error", details: err });
-        synthesizer.close();
-        synthesizer = null;
+        if (synthesizer) { synthesizer.close(); synthesizer = null; }
       }
     );
 
   } catch (e) {
-    console.error("TTS ERROR:", e);
-    if (synthesizer) {
-      synthesizer.close();
-    }
-    res.status(500).json({ error: "TTS failed" });
+    console.error("[TTS-DEBUG] Catch-all Error:", e);
+    if (synthesizer) { synthesizer.close(); }
+    res.status(500).json({ error: "TTS failed", message: e.message });
   }
 });
 
