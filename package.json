@@ -13,6 +13,7 @@
   "description": "",
   "dependencies": {
     "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
     "express": "^5.2.1",
     "microsoft-cognitiveservices-speech-sdk": "^1.47.0",
     "node-fetch": "^3.3.2"
