@@ -330,7 +330,7 @@
       "th", "sh", "ch", "ph", "gh", "ck", "wh", "ng", "qu", "oo", "ea", "ai", "ou", "ee"
     ];
 
-    /* ===== Heuristic Alignment Logic ===== */
+    /* ===== 增强型字母-音素对齐逻辑 ===== */
     function alignLettersToPhonemes(word, phonemes) {
       const letters = word.toLowerCase();
       const aligned = [];
@@ -344,38 +344,67 @@
         userPhonemes = parts;
       }
 
-      phonemes.forEach((ph, i) => {
+      // 预处理音素列表以便索引
+      const phList = phonemes.map(p => p.Phoneme.toLowerCase());
+
+      for (let i = 0; i < pCount; i++) {
+        const ph = phonemes[i];
         let displayPh = convertUsToIpa(ph.Phoneme);
-        if (userPhonemes && userPhonemes[i]) {
-          displayPh = userPhonemes[i];
-        }
+        if (userPhonemes && userPhonemes[i]) displayPh = userPhonemes[i];
 
-        // 2. 增强型字母对齐
-        const remainingPhonemes = pCount - i;
-        const remainingLetters = letters.length - letterIndex;
         let chunkSize = 1;
+        const remainingLetters = letters.length - letterIndex;
+        const curLetter = letters[letterIndex];
 
-        if (remainingPhonemes === 1) {
-          // 最后一个音素拿走剩下所有字母
-          chunkSize = remainingLetters;
-        } else {
-          // 如果当前的音素对应到辅音，且后面跟着常见辅音组合，尝试合并
-          const nextTwo = letters.substr(letterIndex, 2);
-          if (COMMON_CLUSTERS.includes(nextTwo) && remainingLetters > 2) {
-            chunkSize = 2;
-          } else {
-            // 默认分配权重
-            chunkSize = Math.ceil(remainingLetters / remainingPhonemes);
+        // --- 特殊规则处理 ---
+
+        // 1. 处理 'x' 映射为 /g z/ 或 /k s/ (占两个音素)
+        if (curLetter === 'x') {
+          const nextPh = phList[i + 1];
+          if (phList[i] === 'g' && nextPh === 'z' || phList[i] === 'k' && nextPh === 's') {
+            // 这个 'x' 负责了当前的和下一个音素
+            // 逻辑处理：将 'x' 分配给第一个，第二个音素分配空字符
+            aligned.push({
+              phoneme: displayPh,
+              azurePhoneme: ph.Phoneme,
+              score: ph.PronunciationAssessment?.AccuracyScore || 0,
+              letters: "x"
+            });
+            letterIndex += 1;
+            continue;
           }
         }
 
-        // 越界检查
-        if (letterIndex + chunkSize > letters.length) {
-          chunkSize = letters.length - letterIndex;
+        // 如果上一个是 'x' 且触发了双音素逻辑，当前 i 对应的其实是 z 或 s
+        // 我们判断是不是刚处理完 x 对应的 gz 中的 z
+        const lastItem = aligned[aligned.length - 1];
+        if (lastItem && lastItem.letters === "x" && (phList[i] === 'z' || phList[i] === 's')) {
+          aligned.push({
+            phoneme: displayPh,
+            azurePhoneme: ph.Phoneme,
+            score: ph.PronunciationAssessment?.AccuracyScore || 0,
+            letters: "" // 置空，因为 x 已经显示过了
+          });
+          continue;
         }
 
-        const chunk = word.substr(letterIndex, chunkSize);
+        // 2. 处理结尾的 'le' -> /l/
+        if (i === pCount - 1 && remainingLetters >= 2 && letters.endsWith("le") && phList[i] === "l") {
+          chunkSize = remainingLetters;
+        }
+        // 3. 处理组合字母 (th, sh 等)
+        else if (COMMON_CLUSTERS.includes(letters.substr(letterIndex, 2)) && remainingLetters > 2) {
+          chunkSize = 2;
+        }
+        // 4. 兜底逻辑
+        else {
+          chunkSize = Math.ceil(remainingLetters / (pCount - i));
+        }
 
+        // 越界检查
+        if (letterIndex + chunkSize > letters.length) chunkSize = letters.length - letterIndex;
+
+        const chunk = word.substr(letterIndex, chunkSize);
         aligned.push({
           phoneme: displayPh,
           azurePhoneme: ph.Phoneme,
@@ -384,7 +413,7 @@
         });
 
         letterIndex += chunkSize;
-      });
+      }
 
       return aligned;
     }
