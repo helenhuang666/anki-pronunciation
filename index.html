@@ -13,6 +13,9 @@
       font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: #fff;
       height: 100vh;
+      /* Fallback */
+      height: 100dvh;
+      /* Dynamic Viewport Height for Mobile */
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -26,12 +29,24 @@
       align-items: center;
       justify-content: center;
       padding: 20px;
+      overflow-y: auto;
+      /* Allow scrolling if content is tall */
+    }
+
+    /* ===== Target Word ===== */
+    #target-word {
+      font-size: 32px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 10px;
+      text-align: center;
     }
 
     /* ===== Total Score & Stars ===== */
     .score-header {
       text-align: center;
       margin-bottom: 40px;
+      transition: opacity 0.3s;
     }
 
     .total-score {
@@ -65,13 +80,14 @@
       gap: 12px;
       margin-bottom: 20px;
       flex-wrap: wrap;
+      width: 100%;
     }
 
     .bar-group {
       display: flex;
       flex-direction: column;
       align-items: center;
-      width: 50px;
+      min-width: 44px;
       background-color: #dceddd;
       /* Light green background */
       border-top-left-radius: 25px;
@@ -131,23 +147,21 @@
     }
 
     /* Red */
-    .text-good {
-      color: #81c784;
-    }
 
     /* ===== Bottom Controls ===== */
     .controls {
-      padding: 30px;
+      padding: 20px;
       display: flex;
       flex-direction: column;
       align-items: center;
       background: white;
       padding-bottom: max(30px, env(safe-area-inset-bottom));
+      flex-shrink: 0;
     }
 
     .mic-button {
-      width: 80px;
-      height: 80px;
+      width: 72px;
+      height: 72px;
       border-radius: 50%;
       background-color: #e69a5a;
       /* Orange/Gold like image */
@@ -158,11 +172,12 @@
       box-shadow: 0 4px 10px rgba(230, 154, 90, 0.4);
       cursor: pointer;
       transition: all 0.2s;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .mic-button svg {
-      width: 40px;
-      height: 40px;
+      width: 36px;
+      height: 36px;
       fill: white;
     }
 
@@ -174,10 +189,11 @@
     }
 
     .status-text {
-      margin-top: 16px;
+      margin-top: 12px;
       color: #333;
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 500;
+      min-height: 20px;
     }
 
     @keyframes pulse {
@@ -194,10 +210,10 @@
       }
     }
 
-    /* Tip Box (Hidden by default, shown on click) */
+    /* Tip Box */
     #tip-box {
       position: absolute;
-      top: 10%;
+      top: 60px;
       left: 50%;
       transform: translateX(-50%);
       width: 80%;
@@ -221,6 +237,9 @@
 
     <div id="tip-box"></div>
 
+    <!-- Target Word Display -->
+    <div id="target-word"></div>
+
     <!-- Score Header -->
     <div class="score-header" id="score-header" style="opacity: 0;">
       <div class="total-score" id="main-score">0<span class="score-unit">分</span></div>
@@ -229,8 +248,7 @@
 
     <!-- Bars Area -->
     <div class="bars-container" id="bars-container">
-      <!-- Placeholders or Empty State -->
-      <div style="color:#aaa; font-size: 18px; margin-top:40px;">点击下方麦克风开始测评</div>
+      <div style="color:#aaa; font-size: 16px; margin-top:20px;">点击下方麦克风开始测评</div>
     </div>
 
   </div>
@@ -246,20 +264,21 @@
       </svg>
     </button>
     <div class="status-text" id="status">点击录音</div>
-    <!-- Hidden Audio Player -->
-    <audio id="player" style="display:none;"></audio>
   </div>
 
   <script type="module">
     import { PhonemeTips } from "./phoneme_tips.js";
 
     const params = new URLSearchParams(window.location.search);
-    const targetWord = params.get("word") || "hello"; // Default word
+    const targetWord = params.get("word") || "Example";
+    const userIpa = params.get("ipa"); // Optional: User provided IPA
+
+    // Display Word immediately
+    document.getElementById("target-word").innerText = targetWord;
 
     /* ===== State ===== */
     let recording = false;
     let audioContext = null;
-    let mediaRecorder = null;
     let chunks = [];
 
     const recordBtn = document.getElementById("recordBtn");
@@ -275,34 +294,41 @@
       const letters = word.toLowerCase().split('');
       const aligned = [];
 
-      // Very simple distribution:
-      // If we have P phonemes and L letters, assign roughly L/P letters to each phoneme.
-      // This is not linguistically perfect but visually sufficient for a "demo" feel 
-      // without heavy NLP libraries.
-
       let letterIndex = 0;
       const pCount = phonemes.length;
 
+      // Try to parse User IPA if available match counting
+      // Assume user IPA is space separated or just a string we try to map 1:1 if length matches
+      // E.g. "h e l l o" or "/h/ /e/ /l/ /l/ /o/"
+      let userPhonemes = null;
+      if (userIpa) {
+        // 1. Try splitting by space/slash
+        const clean = userIpa.replace(/\//g, ' ').trim();
+        const parts = clean.split(/\s+/).filter(Boolean);
+        if (parts.length === pCount) {
+          userPhonemes = parts;
+        }
+      }
+
       phonemes.forEach((ph, i) => {
-        // Calculate how many letters this phoneme should "consume"
-        // We try to distribute remaining letters among remaining phonemes
+        // 1. Determine Phoneme Label
+        // Use User's IPA label if we matched the count, otherwise use Azure's
+        const displayPhoneme = userPhonemes ? userPhonemes[i] : ph.Phoneme;
+
+        // 2. Determine Letter Chunk
         const remainingPhonemes = pCount - i;
         const remainingLetters = letters.length - letterIndex;
 
-        // ideal chunk size
         let chunkSize = Math.ceil(remainingLetters / remainingPhonemes);
-
-        // Hard constraint: keep at least 1 letter for future phonemes if needed
         if (remainingLetters - chunkSize < remainingPhonemes - 1) {
           chunkSize = 1;
         }
 
-        // Extra heuristic: 'th', 'sh', 'ch', 'ph' often go together
-        // Refine if needed, but simple slicing is often okay for UI visualization
-
         const chunk = word.substr(letterIndex, chunkSize);
+
         aligned.push({
-          phoneme: ph.Phoneme,
+          phoneme: displayPhoneme, // The visualization label
+          azurePhoneme: ph.Phoneme, // The actual phoneme for TTS/Tips
           score: ph.PronunciationAssessment?.AccuracyScore || 0,
           letters: chunk
         });
@@ -315,47 +341,33 @@
 
     /* ===== Render UI ===== */
     function renderResult(nbest) {
-      // Show header
       scoreHeader.style.opacity = "1";
 
-      // Calculate Total
       const pa = nbest.PronunciationAssessment;
       const acc = Math.round(pa.AccuracyScore || 0);
-      const flu = Math.round(pa.FluencyScore || 0);
-      const comp = Math.round(pa.CompletenessScore || 0);
-      // Weighted average or just Accuracy? Image shows "92". Let's use Azure's total or Acc.
-      // Often aggregate is (Acc + Flu + Comp) / 3 or just Accuracy.
-      // Let's use Accuracy as the main "Pronunciation" score displayed.
-      const displayScore = acc;
 
-      mainScoreEl.innerHTML = `${displayScore}<span class="score-unit">分</span>`;
+      // Update Score
+      mainScoreEl.innerHTML = `${acc}<span class="score-unit">分</span>`;
 
-      // Stars (0-100 -> 0-5)
-      const starCount = Math.round(displayScore / 20);
+      // Update Stars
+      const starCount = Math.round(acc / 20);
       let starHtml = "";
       for (let i = 0; i < 5; i++) {
         starHtml += i < starCount ? "★" : "<span class='gray'>☆</span>";
       }
       starsEl.innerHTML = starHtml;
 
-      // Render Bars
-      barsContainer.innerHTML = "";
-
-      // Flatten phonemes from Words
-      // Azure structure: Words -> [ { Phonemes: [...] } ]
-      // We only track the TARGET word usually.
-      // If sentence, we might have multiple words. For single word mode:
+      // Flat phonemes
       const targetPhonemes = [];
-      // Find the word that matches our target (if possible) or just take all phonemes
-      // Assuming single word assessment for now as per usage
-
       nbest.Words.forEach(w => {
         if (w.Phonemes) targetPhonemes.push(...w.Phonemes);
       });
 
-      // ALIGNMENT
+      // Alignment
       const alignedData = alignLettersToPhonemes(targetWord, targetPhonemes);
 
+      // Render Bars
+      barsContainer.innerHTML = "";
       alignedData.forEach(item => {
         const score = item.score;
         let colorClass = "bg-poor";
@@ -364,19 +376,18 @@
 
         const div = document.createElement("div");
         div.className = "bar-group";
-        div.onclick = () => playPhoneme(item.phoneme);
+        // Important: Play the AZURE phoneme for TTS, as that is standard IPA that TTS understands
+        div.onclick = () => playPhoneme(item.azurePhoneme, item.phoneme);
 
-        // Letters
         const lDiv = document.createElement("div");
         lDiv.className = "bar-letter";
         lDiv.innerText = item.letters;
 
-        // IPA
         const iDiv = document.createElement("div");
         iDiv.className = "bar-ipa";
-        iDiv.innerText = `/${item.phoneme}/`;
+        // Ensure slashed display
+        iDiv.innerText = `/${item.phoneme.replace(/\//g, '')}/`;
 
-        // Score Bar
         const sDiv = document.createElement("div");
         sDiv.className = `bar-score ${colorClass}`;
         sDiv.innerText = Math.round(score);
@@ -390,16 +401,17 @@
     }
 
     // Play Phoneme
-    async function playPhoneme(ph) {
-      const tip = PhonemeTips[ph];
+    async function playPhoneme(ttsPhoneme, displayPhoneme) {
+      const tip = PhonemeTips[ttsPhoneme] || PhonemeTips[displayPhoneme];
       if (tip) {
-        showTip(ph, tip);
+        showTip(displayPhoneme, tip);
       }
 
       try {
+        // Generate SSML with the AZURE phoneme (standard IPA)
         const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
       <voice name="en-US-AvaMultilingualNeural">
-        <phoneme alphabet="ipa" ph="${ph}"> ${ph} </phoneme>
+        <phoneme alphabet="ipa" ph="${ttsPhoneme}"> ${ttsPhoneme} </phoneme>
       </voice>
     </speak>`;
 
@@ -411,10 +423,23 @@
 
         if (res.ok) {
           const blob = await res.blob();
-          new Audio(URL.createObjectURL(blob)).play();
+          const audioUrl = URL.createObjectURL(blob);
+          const audio = new Audio(audioUrl);
+
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(error => {
+              console.error("Playback failed (Autoplay/Interaction):", error);
+              // alert("无法自动播放音频，请再次点击"); 
+            });
+          }
+        } else {
+          console.error("TTS Fetch Failed:", res.status, await res.text());
+          alert("发音生成失败，请重试");
         }
       } catch (e) {
-        console.error(e);
+        console.error("TTS Network Error:", e);
+        alert("网络错误: " + e.message);
       }
     }
 
@@ -437,8 +462,12 @@
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        // Reset UI
         audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        // Resume context for iOS
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+
         const input = audioContext.createMediaStreamSource(stream);
         const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
@@ -454,34 +483,38 @@
         recordBtn.classList.add("recording");
         statusLabel.innerText = "点击停止";
 
-        // Store references to stop later
         window.recStream = stream;
         window.recProcessor = processor;
         window.recInput = input;
 
       } catch (e) {
-        alert("无法访问麦克风");
+        console.error(e);
+        alert("无法访问麦克风: " + e.message);
       }
     }
 
     function stopRecord() {
+      if (!recording) return;
       recording = false;
       recordBtn.classList.remove("recording");
       statusLabel.innerText = "正在评分...";
 
-      // Stop input
       if (window.recProcessor) window.recProcessor.disconnect();
       if (window.recInput) window.recInput.disconnect();
       if (window.recStream) window.recStream.getTracks().forEach(t => t.stop());
 
-      // Encode
-      const wav = encodeWAV(chunks);
-
-      // Send
-      sendCheck(wav);
+      // Safe stop
+      if (audioContext) {
+        // Allow last chunk to process
+        setTimeout(() => {
+          const wav = encodeWAV(chunks);
+          sendCheck(wav);
+          audioContext.close();
+        }, 200);
+      }
     }
 
-    /* ===== Encode & Send ===== */
+    /* ===== Utilities ===== */
     function encodeWAV(buffers) {
       let len = buffers.reduce((s, b) => s + b.length, 0);
       let pcm = new Int16Array(len);
@@ -496,7 +529,6 @@
       const wav = new ArrayBuffer(44 + pcm.length * 2);
       const view = new DataView(wav);
 
-      // RIFF Header... simplified for brevity, assume standard 16k mono
       writeString(view, 0, 'RIFF');
       view.setUint32(4, 36 + pcm.length * 2, true);
       writeString(view, 8, 'WAVE');
@@ -535,20 +567,21 @@
 
         const data = await res.json();
 
-        // Check Result
         if (data.NBest && data.NBest.length > 0) {
           statusLabel.innerText = "评分完成";
           renderResult(data.NBest[0]);
         } else {
-          statusLabel.innerText = "未识别到语音";
-          if (data.RetrievalStatus) console.log(data);
+          const status = data.RecognitionStatus || "Fail";
+          statusLabel.innerText = "未识别: " + status;
+          if (status === 'NoMatch') {
+            alert("未检测到有效语音，请重试");
+          }
         }
       } catch (e) {
-        statusLabel.innerText = "Error";
+        statusLabel.innerText = "网络/服务错误";
         console.error(e);
       }
     }
-
   </script>
 </body>
 
