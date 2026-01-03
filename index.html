@@ -282,6 +282,22 @@
   <script type="module">
     import { PhonemeTips } from "./phoneme_tips.js";
 
+    // ===== 音标转换映射 (USPhonetic -> 美式 IPA) =====
+    const US_PHONETIC_TO_IPA = {
+      "aa": "ɑ", "ae": "æ", "ah": "ʌ", "ao": "ɔ", "aw": "aʊ", "ax": "ə", "ay": "aɪ",
+      "eh": "e", "er": "ɝ", "ey": "eɪ", "ih": "ɪ", "iy": "i", "ow": "oʊ", "oy": "ɔɪ",
+      "uh": "ʊ", "uw": "u", "ch": "tʃ", "dh": "ð", "jh": "dʒ", "ng": "ŋ", "sh": "ʃ",
+      "th": "θ", "zh": "ʒ", "y": "j", "d": "d", "f": "f", "g": "g", "h": "h",
+      "k": "k", "l": "l", "m": "m", "n": "n", "p": "p", "r": "r", "s": "s",
+      "t": "t", "v": "v", "w": "w", "z": "z"
+    };
+
+    function convertUsToIpa(ph) {
+      // 处理可能带重音符号的音丝（Azure 有时会带数字）
+      const cleanPh = ph.toLowerCase().replace(/[0-9]/g, '');
+      return US_PHONETIC_TO_IPA[cleanPh] || ph;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const targetWord = decodeURIComponent(params.get("word") || "Example");
     const userIpa = decodeURIComponent(params.get("ipa") || ""); // 明确处理空值
@@ -316,7 +332,7 @@
       let letterIndex = 0;
       const pCount = phonemes.length;
 
-      // 处理用户传入的 USPhonetic 音标字符串 (例如 "/ih g z ae m p ax l/")
+      // 处理用户传入的 USPhonetic 音标字符串 (例如 "/ɪɡ'zæmpl/")
       let userPhonemes = null;
       if (userIpa) {
         // 去掉前后的斜杠，然后按空格切分。例如：/ih g z ae m p ax l/ -> ["ih", "g", "z", "ae", "m", "p", "ax", "l"]
@@ -327,13 +343,10 @@
       }
 
       phonemes.forEach((ph, i) => {
-        // 1. 获取要显示的音标：如果有用户音标，按索引拿；没有则拿 Azure 返回的
-        let displayPh = ph.Phoneme;
+        // 1. 获取要显示的音标：如果有用户音标，按索引拿；没有则拿 Azure 返回的音标并转换
+        let displayPh = convertUsToIpa(ph.Phoneme);
         if (userPhonemes && userPhonemes[i]) {
           displayPh = userPhonemes[i];
-        } else if (userPhonemes && userPhonemes.length > 0) {
-          // 如果索引超出了用户传的长度，显示个问号或者空，但通常数量应该接近
-          displayPh = ph.Phoneme;
         }
 
         // 2. 字母对齐
@@ -381,7 +394,7 @@
       nbest.Words.forEach(w => {
         if (w.Phonemes) {
           targetPhonemes.push(...w.Phonemes);
-          w.Phonemes.forEach(p => displayPhonemesList.push(p.Phoneme));
+          w.Phonemes.forEach(p => displayPhonemesList.push(convertUsToIpa(p.Phoneme)));
         }
       });
 
@@ -424,7 +437,8 @@
 
     // Play Phoneme
     async function playPhoneme(ttsPhoneme, displayPhoneme) {
-      const tip = PhonemeTips[ttsPhoneme] || PhonemeTips[displayPhoneme];
+      // 先尝试根据显示音标或 Azure 原始音素找提示
+      const tip = PhonemeTips[displayPhoneme] || PhonemeTips[convertUsToIpa(ttsPhoneme)] || PhonemeTips[ttsPhoneme];
       if (tip) {
         showTip(displayPhoneme, tip);
       }
@@ -446,22 +460,24 @@
         if (res.ok) {
           const blob = await res.blob();
           const audioUrl = URL.createObjectURL(blob);
-          const audio = new Audio(audioUrl);
+          const audio = new Audio();
+          audio.src = audioUrl;
 
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(error => {
-              console.error("Playback failed (Autoplay/Interaction):", error);
-              // alert("无法自动播放音频，请再次点击"); 
-            });
-          }
+          // 显式加载并尝试播放
+          audio.load();
+          audio.play().catch(e => {
+            console.warn("Autoplay blocked or playback error:", e);
+            // 在 UI 上给个小提示
+            statusLabel.innerText = "点击竖条试听";
+          });
         } else {
-          console.error("TTS Fetch Failed:", res.status, await res.text());
-          alert("发音生成失败，请重试");
+          const err = await res.json();
+          console.error("TTS Failed:", err);
+          alert(`发音失败: ${err.reason || "未知原因"}`);
         }
       } catch (e) {
-        console.error("TTS Network Error:", e);
-        alert("网络错误: " + e.message);
+        console.error("TTS Error:", e);
+        alert("网络问题导致发音失败");
       }
     }
 
