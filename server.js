@@ -44,45 +44,55 @@ app.post("/tts", async (req, res) => {
     const AZURE_KEY = process.env.AZURE_KEY;
     const AZURE_REGION = process.env.AZURE_REGION;
 
-    console.log(`[TTS-DEBUG] Region: ${AZURE_REGION}, Key status: ${AZURE_KEY ? 'Set' : 'Missing'}`);
-    console.log(`[TTS-DEBUG] SSML: ${ssml}`);
+    console.log(`[TTS-DEBUG] Region: ${AZURE_REGION}, Key len: ${AZURE_KEY ? AZURE_KEY.length : 0}`);
+    console.log(`[TTS-DEBUG] SSML payload: ${ssml}`);
 
     if (!AZURE_KEY || !AZURE_REGION) {
       return res.status(500).json({ error: "Azure config missing" });
     }
 
     const speechConfig = sdk.SpeechConfig.fromSubscription(AZURE_KEY, AZURE_REGION);
-    // 设置输出格式为 WAV (Riff16Khz16BitMonoPcm)
+    // 强制使用 Jenny，且设置输出格式
+    speechConfig.speechSynthesisVoiceName = "en-US-JennyNeural";
     speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm;
 
-    synthesizer = new sdk.SpeechSynthesizer(speechConfig, null); // null audio config means no default speaker output
+    synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
 
-    synthesizer.speakSsmlAsync(
-      ssml,
-      (result) => {
-        if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
-          console.log("[TTS-DEBUG] Success! Audio data length:", result.audioData.byteLength);
-          const audioBuffer = Buffer.from(result.audioData);
-          res.set("Content-Type", "audio/wav");
-          res.send(audioBuffer);
-        } else {
-          console.error("[TTS-DEBUG] Failed! Reason:", result.reason, "Details:", result.errorDetails);
-          res.status(500).json({ error: "TTS Failed", reason: result.reason, details: result.errorDetails });
-        }
-        synthesizer.close();
-        synthesizer = null;
-      },
-      (err) => {
-        console.error("[TTS-DEBUG] SDK Generic Error:", err);
-        res.status(500).json({ error: "TTS SDK Error", details: err });
-        if (synthesizer) { synthesizer.close(); synthesizer = null; }
-      }
-    );
+    // 封装为 Promise 确保能 catch 到异步错误并打印
+    const speakSsml = () => {
+      return new Promise((resolve, reject) => {
+        synthesizer.speakSsmlAsync(
+          ssml,
+          result => { resolve(result); },
+          err => { reject(err); }
+        );
+      });
+    };
+
+    const result = await speakSsml();
+
+    if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+      console.log("[TTS-DEBUG] Synthesis Success. Data size:", result.audioData.byteLength);
+      const audioBuffer = Buffer.from(result.audioData);
+      res.set("Content-Type", "audio/wav");
+      res.send(audioBuffer);
+    } else {
+      let details = result.errorDetails || "No details provided by Azure";
+      console.error("[TTS-DEBUG] Synthesis Failed. Reason:", result.reason, "Details:", details);
+      res.status(400).json({
+        error: "TTS Failed",
+        reason: result.reason,
+        details: details
+      });
+    }
 
   } catch (e) {
-    console.error("[TTS-DEBUG] Catch-all Error:", e);
-    if (synthesizer) { synthesizer.close(); }
-    res.status(500).json({ error: "TTS failed", message: e.message });
+    console.error("[TTS-DEBUG] Unexpected Catch:", e);
+    res.status(500).json({ error: "Server Internal Error", msg: e.message });
+  } finally {
+    if (synthesizer) {
+      synthesizer.close();
+    }
   }
 });
 
