@@ -86,8 +86,8 @@
     .total-score {
       font-size: 64px;
       font-weight: 500;
-      color: #4fc3f7;
-      /* Light Blue Theme */
+      color: #0288d1;
+      /* 加深后的蓝色 (Deep Light Blue) */
       line-height: 1;
     }
 
@@ -98,8 +98,8 @@
 
     .stars {
       font-size: 28px;
-      color: #4fc3f7;
-      /* Light Blue Theme */
+      color: #0288d1;
+      /* 加深后的蓝色 */
       margin-top: 10px;
       letter-spacing: 4px;
     }
@@ -200,13 +200,13 @@
       width: 72px;
       height: 72px;
       border-radius: 50%;
-      background-color: #4fc3f7;
-      /* Light Blue Theme */
+      background-color: #0288d1;
+      /* 加深后的蓝色 */
       border: none;
       display: flex;
       justify-content: center;
       align-items: center;
-      box-shadow: 0 4px 10px rgba(79, 195, 247, 0.4);
+      box-shadow: 0 4px 10px rgba(2, 136, 209, 0.4);
       cursor: pointer;
       transition: all 0.2s;
       -webkit-tap-highlight-color: transparent;
@@ -354,30 +354,6 @@
       "pp", "tt", "bb", "dd", "ff", "gg", "mm", "nn", "rr", "ss", "ll"
     ];
 
-    function stopRecord() {
-      if (!recording) return;
-      recording = false;
-      recordBtn.classList.remove("recording");
-      statusLabel.innerText = "正在评分...";
-
-      if (window.recProcessor) window.recProcessor.disconnect();
-      if (window.recInput) window.recInput.disconnect();
-      if (window.recStream) window.recStream.getTracks().forEach(t => t.stop());
-
-      if (audioContext) {
-        setTimeout(() => {
-          const wav = encodeWAV(chunks);
-          lastRecordedBlob = wav; // 保存 blob
-
-          // 立即启用回放 (不管评分是否成功)
-          playbackBtn.disabled = false;
-          playbackBtn.innerText = "回放我的发音";
-
-          sendCheck(wav);
-          audioContext.close();
-        }, 200);
-      }
-    }
 
     /* ===== 增强型字母-音素对齐逻辑 (支持单字母多音素合并 & 弱读合并) ===== */
     function alignLettersToPhonemes(word, phonemes) {
@@ -674,6 +650,12 @@
         // Allow last chunk to process
         setTimeout(() => {
           const wav = encodeWAV(chunks);
+          lastRecordedBlob = wav; // 保存 blob
+
+          // 立即启用回放 (不管评分是否成功)
+          playbackBtn.disabled = false;
+          playbackBtn.innerText = "回放我的发音";
+
           sendCheck(wav);
           audioContext.close();
         }, 200);
