@@ -144,8 +144,8 @@ app.post("/assess", async (req, res) => {
       sdk.PronunciationAssessmentGranularity.Phoneme,
       true // enableMiscue
     );
-    // Explicitly set dimension to Comprehensive to get proper scores
-    // Note: The JS SDK constructor usually sets this default, but we rely on the config object.
+    // Request IPA instead of default USPhonetic
+    pronunciationAssessmentConfig.phoneticAlphabet = "IPA";
 
     recognizer = new sdk.SpeechRecognizer(speechConfig, audioConfig);
     pronunciationAssessmentConfig.applyTo(recognizer);
