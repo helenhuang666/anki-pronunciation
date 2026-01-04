@@ -422,15 +422,15 @@
         let groupTtsIpa = curr.ipa;
         let score = curr.score;
 
-        // 1. 弱读合并逻辑 (ə) 或 特殊结尾合并
-        if (curr.ipa === "ə" && next) {
+        // 1. 特殊合并逻辑 (已按需移除 ə 强制合并)
+        const isX = curChar === 'x' && next && (next.ipa === 'z' || next.ipa === 's');
+
+        if (isX) {
           groupPhonemes.push(next.raw);
-          groupDisplayIpa = `(${curr.ipa})${next.ipa}`;
-          groupTtsIpa = `${curr.ipa} ${next.ipa}`;
-          score = (curr.score + next.score) / 2;
+          groupDisplayIpa += next.ipa;
+          groupTtsIpa += " " + next.ipa;
+          score = Math.min(score, next.score);
           i++;
-          curr = phObjects[i];
-          next = i + 1 < pCount ? phObjects[i + 1] : null;
         }
 
         // 2. 字母切割逻辑
@@ -443,16 +443,7 @@
         if (curChar === nextChar && COMMON_CLUSTERS.includes(curChar + nextChar) && remainingLetters >= 2) {
           chunkSize = 2;
         }
-        // 检查 'x' 规则
-        else if (curChar === 'x' && next && (next.ipa === 'z' || next.ipa === 's')) {
-          groupPhonemes.push(next.raw);
-          groupDisplayIpa += next.ipa;
-          groupTtsIpa += " " + next.ipa;
-          score = Math.min(score, next.score);
-          i++;
-          chunkSize = 1;
-        }
-        // 检查末尾 'le' (针对 Apple 等词，通常对应最后两个音素或一个成音节 l)
+        // 检查末尾 'le' (针对 Apple 等词)
         else if (isAppleStyle && remainingLetters <= 2 && i >= pCount - 2) {
           chunkSize = remainingLetters;
         }
@@ -618,18 +609,20 @@
 
     // 核心工具：将任意浏览器音频 Blob 转为符合 Azure 要求的 16k Mono PCM WAV
     async function convertToAzureWav(blob) {
+      const startTime = Date.now();
       const buffer = await blob.arrayBuffer();
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-      // 兼容 iOS 异步解码
+      const decodeStart = Date.now();
       const audioData = await new Promise((resolve, reject) => {
         ctx.decodeAudioData(buffer, resolve, (err) => {
           logDebug(`音频解码错误: ${err ? err.message : '未知'}`, "err");
           reject(err || new Error("Decode failed"));
         });
       });
+      logDebug(`音频解码耗时: ${Date.now() - decodeStart}ms`);
 
-      // 创建 16000Hz 的离线上下文进行重采样
+      const resampleStart = Date.now();
       const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
       const offlineCtx = new OfflineCtx(1, Math.ceil(audioData.duration * 16000), 16000);
 
@@ -638,14 +631,18 @@
       source.connect(offlineCtx.destination);
       source.start();
 
-      // 兼容旧版 startRendering 回调格式
       const resampledData = await new Promise((resolve) => {
         offlineCtx.oncomplete = (e) => resolve(e.renderedBuffer);
         const promise = offlineCtx.startRendering();
         if (promise && promise.then) promise.then(resolve);
       });
+      logDebug(`重采样渲染耗时: ${Date.now() - resampleStart}ms`);
 
+      const encodeStart = Date.now();
       const pcmBlob = encodeWAVFromFloat(resampledData.getChannelData(0));
+      logDebug(`PCM 编码耗时: ${Date.now() - encodeStart}ms`);
+
+      logDebug(`总转码耗时: ${Date.now() - startTime}ms`, "ok");
       await ctx.close();
       return pcmBlob;
     }
