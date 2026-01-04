@@ -362,6 +362,19 @@
     if (wordEl) wordEl.innerText = targetWord;
     if (ipaEl) ipaEl.innerText = userIpa ? `/${userIpa.replace(/^\/|\/$/g, '')}/` : "";
 
+    // ===== 音标工具：Arpabet 强制转标准 IPA =====
+    const ARPABET_TO_IPA = {
+      "ae": "æ", "ax": "ə", "ah": "ʌ", "aa": "ɑ", "ao": "ɔ", "ih": "ɪ", "eh": "e", "iy": "i", "uh": "ʊ", "uw": "u",
+      "er": "ɜːr", "axr": "ər", "ey": "eɪ", "ay": "aɪ", "oy": "ɔɪ", "aw": "aʊ", "ow": "oʊ",
+      "p": "p", "b": "b", "t": "t", "d": "d", "k": "k", "g": "g", "f": "f", "v": "v", "th": "θ", "dh": "ð",
+      "s": "s", "z": "z", "sh": "ʃ", "zh": "ʒ", "ch": "tʃ", "jh": "dʒ", "m": "m", "n": "n", "ng": "ŋ", "l": "l", "r": "r", "w": "w", "y": "j", "hh": "h"
+    };
+    function getStandardIpa(pObj) {
+      if (pObj.IPA) return pObj.IPA;
+      const code = (pObj.Phoneme || "").toLowerCase();
+      return ARPABET_TO_IPA[code] || code;
+    }
+
     /* ===== State ===== */
     let recording = false;
     let mediaRecorder = null;
@@ -392,12 +405,13 @@
 
       // 预处理音素
       const phObjects = phonemes.map(p => ({
-        ipa: p.IPA || p.Phoneme, // 核心：使用 Azure 返回的 IPA
+        ipa: getStandardIpa(p), // 使用强制转换
         score: p.PronunciationAssessment?.AccuracyScore || 0,
         raw: p
       }));
 
       const finalGroups = [];
+      const isAppleStyle = letters.endsWith('le') && letters.length > 3;
 
       for (let i = 0; i < pCount; i++) {
         let curr = phObjects[i];
@@ -408,45 +422,39 @@
         let groupTtsIpa = curr.ipa;
         let score = curr.score;
 
-        // 1. 弱读合并逻辑 (ə)
+        // 1. 弱读合并逻辑 (ə) 或 特殊结尾合并
         if (curr.ipa === "ə" && next) {
           groupPhonemes.push(next.raw);
           groupDisplayIpa = `(${curr.ipa})${next.ipa}`;
           groupTtsIpa = `${curr.ipa} ${next.ipa}`;
           score = (curr.score + next.score) / 2;
-          i++; // 跳过 next
-          curr = phObjects[i]; // 更新当前引用
+          i++;
+          curr = phObjects[i];
           next = i + 1 < pCount ? phObjects[i + 1] : null;
         }
 
         // 2. 字母切割逻辑
         const remainingLetters = letters.length - letterIndex;
         const curChar = letters[letterIndex] || "";
-        const tailPh = groupPhonemes[groupPhonemes.length - 1].Phoneme.toLowerCase();
+        const nextChar = letters[letterIndex + 1] || "";
         let chunkSize = 1;
 
-        // 检查 'x' 规则 (针对 group 尾部音素 + peek)
-        const peekIndex = i + 1;
-        const peekPh = peekIndex < pCount ? phObjects[peekIndex] : null;
-
-        if (curChar === 'x' && peekPh) {
-          const p1 = tailPh;
-          const p2 = peekPh.raw.Phoneme.toLowerCase();
-          // Azure 即使在 IPA 模式下，Phoneme 字段可能还是保留原始代码或对应音素
-          if ((p1 === 'g' || p1 === 'k') && (p2 === 'z' || p2 === 's')) {
-            groupPhonemes.push(peekPh.raw);
-            groupDisplayIpa += peekPh.ipa;
-            groupTtsIpa += " " + peekPh.ipa;
-            score = Math.min(score, peekPh.score);
-            i++;
-            chunkSize = 1;
-          }
-        }
-        else if (groupDisplayIpa.includes('l') && letters.endsWith('le') && i >= pCount - 1 && remainingLetters >= 2) {
-          chunkSize = remainingLetters;
-        }
-        else if (COMMON_CLUSTERS.includes(letters.substr(letterIndex, 2)) && remainingLetters > 2) {
+        // 检查双写字母 (pp, tt, ll, ss...)
+        if (curChar === nextChar && COMMON_CLUSTERS.includes(curChar + nextChar) && remainingLetters >= 2) {
           chunkSize = 2;
+        }
+        // 检查 'x' 规则
+        else if (curChar === 'x' && next && (next.ipa === 'z' || next.ipa === 's')) {
+          groupPhonemes.push(next.raw);
+          groupDisplayIpa += next.ipa;
+          groupTtsIpa += " " + next.ipa;
+          score = Math.min(score, next.score);
+          i++;
+          chunkSize = 1;
+        }
+        // 检查末尾 'le' (针对 Apple 等词，通常对应最后两个音素或一个成音节 l)
+        else if (isAppleStyle && remainingLetters <= 2 && i >= pCount - 2) {
+          chunkSize = remainingLetters;
         }
 
         if (letterIndex + chunkSize > letters.length) chunkSize = letters.length - letterIndex;
@@ -479,7 +487,7 @@
       nbest.Words.forEach(w => {
         if (w.Phonemes) {
           targetPhonemes.push(...w.Phonemes);
-          w.Phonemes.forEach(p => displayPhonemesList.push(p.IPA || p.Phoneme));
+          w.Phonemes.forEach(p => displayPhonemesList.push(getStandardIpa(p)));
         }
       });
 
