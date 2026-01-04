@@ -377,8 +377,8 @@
 
     /* ===== State ===== */
     let recording = false;
-    let mediaRecorder = null;
-    let audioBlobs = [];
+    let audioContext = null;
+    let recBuffer = [];
     let lastRecordedBlob = null;
 
     const recordBtn = document.getElementById("recordBtn");
@@ -427,7 +427,7 @@
         const curChar = letters[letterIndex] || "";
         const nextChar = letters[letterIndex + 1] || "";
 
-        // 1. 特殊合并逻辑 (已按需移除 ə 强制合并)
+        // 1. 特殊合并逻辑 (ə 不再合并，显式独立)
         const isX = curChar === 'x' && next && (next.ipa === 'z' || next.ipa === 's');
 
         if (isX) {
@@ -545,108 +545,71 @@
     };
 
     async function startRecord() {
-      logDebug("正在请求麦克风权限...");
+      logDebug("正在请求麦克风 (16kHz PCM 直接采样)...");
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        logDebug("麦克风权限已获准", "ok");
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        if (audioContext.state === 'suspended') await audioContext.resume();
 
-        // 我们不指定 MIME 类型，让浏览器自由选择最稳定的 (webm/ogg)
-        mediaRecorder = new MediaRecorder(stream);
-        audioBlobs = [];
+        const input = audioContext.createMediaStreamSource(stream);
+        // 4096 对于 16k 采样率约 250ms 一次回调
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        recBuffer = [];
 
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioBlobs.push(event.data);
-            logDebug(`接收到音频分片: ${event.data.size} bytes`);
+        processor.onaudioprocess = e => {
+          if (recording) {
+            const channelData = e.inputBuffer.getChannelData(0);
+            recBuffer.push(new Float32Array(channelData));
+            logDebug(`[Live] 采集音频分片: ${channelData.length} samples`);
           }
         };
 
-        mediaRecorder.onstop = async () => {
-          logDebug("录音已停止，开始封装 Blob...");
-          const blob = new Blob(audioBlobs, { type: mediaRecorder.mimeType });
-          logDebug(`封装完成: ${blob.size} bytes, 类型: ${blob.type}`, "ok");
+        input.connect(processor);
+        processor.connect(audioContext.destination);
 
-          // 1. 保存用于回放的原声 (确保回放绝对有声)
-          lastRecordedBlob = blob;
-          playbackBtn.disabled = false;
-          playbackBtn.innerText = "回放";
-
-          // 2. 强力转码：AudioContext 解码 -> 重采样 -> WAV
-          try {
-            statusLabel.innerText = "正在转码及评分...";
-            logDebug("开始 16kHz 重采样转码...");
-            const wavBlob = await convertToAzureWav(blob);
-            logDebug(`转码成功: ${wavBlob.size} bytes PCM WAV`, "ok");
-            sendCheck(wavBlob);
-          } catch (err) {
-            logDebug(`转码失败: ${err.message}`, "err");
-            statusLabel.innerText = "音频转码错误";
-          }
-        };
-
-        mediaRecorder.start(500); // 间隔500ms触发一次 dataavailable
-        logDebug("MediaRecorder 已启动");
         recording = true;
         recordBtn.classList.add("recording");
         statusLabel.innerText = "正在录制...";
+        logDebug("PCM 直接采集已启动", "ok");
 
         window.recStream = stream;
+        window.recProcessor = processor;
+        window.recInput = input;
       } catch (e) {
-        logDebug(`麦克风启动失败: ${e.name} - ${e.message}`, "err");
-        alert("麦克风启动失败，请确保已授予权限或处于 HTTPS 环境。");
+        logDebug(`初始化失败: ${e.message}`, "err");
+        alert("无法启动录音: " + e.message);
       }
     }
 
     function stopRecord() {
-      if (!recording || !mediaRecorder) return;
-      logDebug("停止录音...");
+      if (!recording) return;
+      logDebug("停止采样，开始构建 WAV...");
+      const startTime = Date.now();
       recording = false;
       recordBtn.classList.remove("recording");
 
-      mediaRecorder.stop();
-      if (window.recStream) {
-        window.recStream.getTracks().forEach(t => t.stop());
+      if (window.recProcessor) window.recProcessor.disconnect();
+      if (window.recInput) window.recInput.disconnect();
+      if (window.recStream) window.recStream.getTracks().forEach(t => t.stop());
+
+      // 合并 PCM 数据并生成 WAV
+      const totalLen = recBuffer.reduce((acc, b) => acc + b.length, 0);
+      const flatBuffer = new Float32Array(totalLen);
+      let offset = 0;
+      for (const b of recBuffer) {
+        flatBuffer.set(b, offset);
+        offset += b.length;
       }
-    }
 
-    // 核心工具：将任意浏览器音频 Blob 转为符合 Azure 要求的 16k Mono PCM WAV
-    async function convertToAzureWav(blob) {
-      const startTime = Date.now();
-      const buffer = await blob.arrayBuffer();
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const wavBlob = encodeWAVFromFloat(flatBuffer);
+      lastRecordedBlob = wavBlob;
+      playbackBtn.disabled = false;
 
-      const decodeStart = Date.now();
-      const audioData = await new Promise((resolve, reject) => {
-        ctx.decodeAudioData(buffer, resolve, (err) => {
-          logDebug(`音频解码错误: ${err ? err.message : '未知'}`, "err");
-          reject(err || new Error("Decode failed"));
-        });
-      });
-      logDebug(`音频解码耗时: ${Date.now() - decodeStart}ms`);
+      logDebug(`本地处理完成: ${Date.now() - startTime}ms`, "ok");
+      logDebug(`音频包大小: ${wavBlob.size} bytes`, "ok");
 
-      const resampleStart = Date.now();
-      const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-      const offlineCtx = new OfflineCtx(1, Math.ceil(audioData.duration * 16000), 16000);
-
-      const source = offlineCtx.createBufferSource();
-      source.buffer = audioData;
-      source.connect(offlineCtx.destination);
-      source.start();
-
-      const resampledData = await new Promise((resolve) => {
-        offlineCtx.oncomplete = (e) => resolve(e.renderedBuffer);
-        const promise = offlineCtx.startRendering();
-        if (promise && promise.then) promise.then(resolve);
-      });
-      logDebug(`重采样渲染耗时: ${Date.now() - resampleStart}ms`);
-
-      const encodeStart = Date.now();
-      const pcmBlob = encodeWAVFromFloat(resampledData.getChannelData(0));
-      logDebug(`PCM 编码耗时: ${Date.now() - encodeStart}ms`);
-
-      logDebug(`总转码耗时: ${Date.now() - startTime}ms`, "ok");
-      await ctx.close();
-      return pcmBlob;
+      sendCheck(wavBlob);
+      if (audioContext) audioContext.close();
     }
 
     function encodeWAVFromFloat(samples) {
@@ -692,12 +655,14 @@
     };
 
     async function sendCheck(blob) {
+      const startTime = Date.now();
       logDebug(`发起评分请求: /assess?text=${targetWord}`);
       try {
         const res = await fetch(`/assess?text=${targetWord}`, {
           method: "POST",
           body: blob
         });
+        logDebug(`云端响应时间: ${Date.now() - startTime}ms`);
         logDebug(`后端响应码: ${res.status}`);
         const data = await res.json();
 
