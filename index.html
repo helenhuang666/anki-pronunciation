@@ -100,7 +100,9 @@
       font-size: 28px;
       color: #0288d1;
       /* 加深后的蓝色 */
-      margin-top: 10px;
+      margin-top: 15px;
+      /* 增大行间距 */
+      margin-bottom: 5px;
       letter-spacing: 4px;
     }
 
@@ -187,13 +189,41 @@
 
     /* ===== Bottom Controls ===== */
     .controls {
-      padding: 20px;
+      padding: 0 20px 40px 20px;
+      /* 减少顶部填充以变相上移 */
       display: flex;
       flex-direction: column;
       align-items: center;
       background: white;
-      padding-bottom: max(30px, env(safe-area-inset-bottom));
+      padding-bottom: max(50px, env(safe-area-inset-bottom));
       flex-shrink: 0;
+      transform: translateY(-10%);
+      /* 响应式上移 */
+    }
+
+    .btn-row {
+      display: flex;
+      align-items: center;
+      gap: 30px;
+      /* 增大按钮间距 */
+      margin-bottom: 20px;
+    }
+
+    #tip-box {
+      width: 90%;
+      background: #f1f8ff;
+      padding: 16px;
+      /* 增大内边距 */
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.8;
+      /* 增大行高 20%+, 原 1.4 -> 1.8 */
+      color: #01579b;
+      margin-bottom: 20px;
+      border: 1px solid #0288d1;
+      text-align: center;
+      display: none;
+      box-shadow: 0 4px 12px rgba(2, 136, 209, 0.1);
     }
 
     .mic-button {
@@ -246,36 +276,6 @@
         transform: scale(1);
       }
     }
-
-    /* Debug Console */
-    #debug-console {
-      margin: 10px;
-      padding: 10px;
-      background: #333;
-      color: #0f0;
-      font-family: monospace;
-      font-size: 11px;
-      border-radius: 6px;
-      max-height: 120px;
-      overflow-y: auto;
-      display: block;
-      /* 暂时开启以便诊断 */
-      text-align: left;
-      line-height: 1.4;
-      border: 1px solid #555;
-    }
-
-    .debug-line {
-      margin-bottom: 2px;
-    }
-
-    .debug-err {
-      color: #ff5252;
-    }
-
-    .debug-ok {
-      color: #4caf50;
-    }
   </style>
 </head>
 
@@ -297,48 +297,38 @@
     <!-- Bars Area -->
     <div class="bars-container" id="bars-container">
       <div style="color:#666; font-size: 16px; margin: 20px; text-align: center; line-height: 1.6;">
-        <div style="font-weight: 600; color: #0288d1; margin-bottom: 8px;">测评模式已就绪</div>
-        点击下方蓝色麦克风开始录音<br>
-        建议测试单词：<b>Apple</b>
+        请点击下方麦克风开始录音
       </div>
     </div>
-
-    <!-- Debug Output -->
-    <div id="debug-console">
-      <div class="debug-line">[SYS] 等待启动...</div>
-    </div>
+  </div>
 
   </div>
 
   <!-- Bottom Controls -->
   <div class="controls">
-    <div style="display:flex; gap:10px; margin-bottom:10px;">
-      <button id="testAzureBtn" class="playback-btn" style="background:#009688;">测试云端连接</button>
+    <div class="btn-row">
+      <!-- 标准发音按钮 (左) -->
+      <button id="stdWordBtn" class="playback-btn" style="background:#0288d1;">标准发音</button>
+
+      <!-- 核心录音按钮 (中) -->
+      <button id="recordBtn" class="mic-button">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+          <path
+            d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+        </svg>
+      </button>
+
+      <!-- 回放发音按钮 (右) -->
       <button id="playbackBtn" class="playback-btn" disabled>回放</button>
     </div>
-    <button id="recordBtn" class="mic-button">
-      <!-- Mic Icon -->
-      <svg viewBox="0 0 24 24">
-        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-        <path
-          d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-      </svg>
-    </button>
     <div class="status-text" id="status">点击录音</div>
   </div>
 
   <script type="module">
-    // ===== Debug Logger (Must be TOP) =====
-    const debugConsole = document.getElementById("debug-console");
+    // ===== Console Logic =====
     function logDebug(msg, type = "") {
-      const line = document.createElement("div");
-      line.className = "debug-line" + (type ? " debug-" + type : "");
-      line.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
-      if (debugConsole) {
-        debugConsole.appendChild(line);
-        debugConsole.scrollTop = debugConsole.scrollHeight;
-      }
-      console.log("[DEBUG]", msg);
+      console.log(`[ASSESS] ${msg}`);
     }
 
     logDebug("脚本初始化中...");
@@ -383,7 +373,7 @@
 
     const recordBtn = document.getElementById("recordBtn");
     const playbackBtn = document.getElementById("playbackBtn");
-    const testAzureBtn = document.getElementById("testAzureBtn");
+    const stdWordBtn = document.getElementById("stdWordBtn");
     const statusLabel = document.getElementById("status");
     const barsContainer = document.getElementById("bars-container");
     const mainScoreEl = document.getElementById("main-score");
@@ -427,15 +417,22 @@
         const curChar = letters[letterIndex] || "";
         const nextChar = letters[letterIndex + 1] || "";
 
-        // 1. 特殊合并逻辑 (ə 不再合并，显式独立)
+        // 1. 特殊合并逻辑：仅当 ə 出现在辅音 l 前时合并为 (ə)l
+        const isSchwaL = curr.ipa === "ə" && next && next.ipa === "l";
         const isX = curChar === 'x' && next && (next.ipa === 'z' || next.ipa === 's');
 
-        if (isX) {
+        if (isSchwaL) {
+          groupPhonemes.push(next.raw);
+          groupDisplayIpa = `(${curr.ipa})${next.ipa}`;
+          groupTtsIpa = `${curr.ipa} ${next.ipa}`;
+          score = (curr.score + next.score) / 2;
+          i++; // 跳过 next
+        } else if (isX) {
           groupPhonemes.push(next.raw);
           groupDisplayIpa += next.ipa;
           groupTtsIpa += " " + next.ipa;
           score = Math.min(score, next.score);
-          i++; // 跳过 next 音素
+          i++;
         }
 
         // 2. 字母切割逻辑
@@ -636,12 +633,34 @@
       return new Blob([buffer], { type: 'audio/wav' });
     }
 
-    testAzureBtn.onclick = async () => {
-      logDebug("正在测试云端连通性（发送 0.5s 静音）...");
-      const silentBuffer = new Float32Array(8000); // 0.5s at 16k
-      const blob = encodeWAVFromFloat(silentBuffer);
-      sendCheck(blob);
+    stdWordBtn.onclick = () => {
+      // 播放整词的标准发音，如果 IPA 未就绪则回退到纯文本发音
+      const currentIpa = ipaEl ? ipaEl.innerText.replace(/\//g, '').trim() : "";
+      if (currentIpa) {
+        playPhoneme(currentIpa, targetWord);
+      } else {
+        // 纯文本发音作为兜底 (不带音素偏移)
+        playStandardText(targetWord);
+      }
     };
+
+    async function playStandardText(text) {
+      try {
+        const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+          <voice name="en-US-ChristopherNeural">${text}</voice>
+        </speak>`;
+        const res = await fetch(window.location.origin + "/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ssml })
+        });
+        if (res.ok) {
+          const blob = await res.blob();
+          const audio = new Audio(URL.createObjectURL(blob));
+          audio.play();
+        }
+      } catch (e) { console.error("Standard TTS Error", e); }
+    }
 
     playbackBtn.onclick = () => {
       if (lastRecordedBlob) {
