@@ -20,6 +20,8 @@
       flex-direction: column;
       justify-content: space-between;
       overflow: hidden;
+      zoom: 0.8;
+      /* Scale global UI by 80% */
     }
 
     .container {
@@ -31,6 +33,31 @@
       padding: 20px;
       overflow-y: auto;
       /* Allow scrolling if content is tall */
+    }
+
+    /* ... omitted styles ... */
+
+    /* ===== Buttons ===== */
+    .playback-btn {
+      margin-top: 10px;
+      padding: 8px 16px;
+      background-color: #607d8b;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      cursor: pointer;
+      opacity: 0.9;
+      transition: opacity 0.2s;
+    }
+
+    .playback-btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .playback-btn:active {
+      opacity: 0.7;
     }
 
     /* ===== Target Word & IPA ===== */
@@ -277,6 +304,7 @@
       </svg>
     </button>
     <div class="status-text" id="status">点击录音</div>
+    <button id="playbackBtn" class="playback-btn" disabled>回放我的发音</button>
   </div>
 
   <script type="module">
@@ -330,72 +358,110 @@
       "th", "sh", "ch", "ph", "gh", "ck", "wh", "ng", "qu", "oo", "ea", "ai", "ou", "ee"
     ];
 
-    /* ===== 增强型字母-音素对齐逻辑 (支持单字母多音素合并) ===== */
+    /* ===== 增强型字母-音素对齐逻辑 (支持单字母多音素合并 & 弱读合并) ===== */
     function alignLettersToPhonemes(word, phonemes) {
       const letters = word.toLowerCase();
       const alignedGroups = [];
       let letterIndex = 0;
       const pCount = phonemes.length;
 
-      // 转换所有音素为小写便于匹配
-      const phList = phonemes.map(p => p.Phoneme.toLowerCase());
+      // 转换所有音素为小写，并预计算 IPA 供后续使用
+      const phObjects = phonemes.map(p => ({
+        raw: p.Phoneme.toLowerCase(),
+        ipa: convertUsToIpa(p.Phoneme),
+        score: p.PronunciationAssessment?.AccuracyScore || 0,
+        original: p
+      }));
+
+      const finalGroups = [];
 
       for (let i = 0; i < pCount; i++) {
-        const ph = phonemes[i];
-        let displayPh = convertUsToIpa(ph.Phoneme);
+        let curr = phObjects[i];
+        let next = i + 1 < pCount ? phObjects[i + 1] : null;
+
+        let groupPhonemes = [curr.original];
+        let groupDisplayIpa = curr.ipa;
+        let groupTtsIpa = curr.ipa;
+        let score = curr.score;
+
+        // 1. 弱读合并检测：当前是 ə (ax)，且有下一个
+        if (curr.ipa === "ə" && next) {
+          // 合并 next 进来
+          groupPhonemes.push(next.original);
+          groupDisplayIpa = `(${curr.ipa})${next.ipa}`;
+          groupTtsIpa = `${curr.ipa} ${next.ipa}`;
+          score = (curr.score + next.score) / 2; // 取平均分
+
+          // 步进，因为 next 已经被消费
+          i++;
+          // 更新 curr/next 指针给后续逻辑判断 (比如 le 判断)
+          // 注意：现在的“主导”音素变成了 next
+          curr = next; // curr现在代表了组合的第二个音素
+          next = i + 1 < pCount ? phObjects[i + 1] : null; // 重新获取下一个
+        }
+
+        // 2. 字母切割
+        const remainingLetters = letters.length - letterIndex;
+        const curChar = letters[letterIndex] || ''; // 当前字母，可能为空
+
+        // 检查 x 规则 (针对 group 中的最后一个音素和 再下一个音素)
+        // 现在的 group 可能包含 [ə, next] 或者 [curr]。
+        // 我们看 group 的最后一个音素 tailPh
+        const tailPh = groupPhonemes[groupPhonemes.length - 1];
+        const tailPhRaw = tailPh.Phoneme.toLowerCase();
+
+        // 检查是否有下一个待处理音素 (peek)
+        const peekIndex = i + 1;
+        const peekPh = peekIndex < pCount ? phObjects[peekIndex] : null;
 
         let chunkSize = 1;
-        let phonemeSpan = 1; // 这个字母占据了几个音素
-        const curLetter = letters[letterIndex];
 
-        // --- 特殊规则：合并显示 ---
-
-        // 1. 处理 'x' (通常对应 /g z/ 或 /k s/)
-        if (curLetter === 'x' && i + 1 < pCount) {
-          const nextPh = phList[i + 1];
-          if ((phList[i] === 'g' && nextPh === 'z') || (phList[i] === 'k' && nextPh === 's')) {
-            // 合并显示：x 对应 /gz/ 或 /ks/
-            const nextPhObj = phonemes[i + 1];
-            alignedGroups.push({
-              letters: "x",
-              phonemes: [ph, nextPhObj], // 存储原始对象供点击发音使用
-              displayPh: convertUsToIpa(ph.Phoneme) + convertUsToIpa(nextPhObj.Phoneme),
-              score: Math.min(ph.PronunciationAssessment?.AccuracyScore || 0, nextPhObj.PronunciationAssessment?.AccuracyScore || 0)
-            });
-            letterIndex += 1;
-            i += 1; // 跳过下一个音素
-            continue;
+        if (curChar === 'x' && peekPh) {
+          const p1 = tailPhRaw;
+          const p2 = peekPh.raw;
+          if ((p1 === 'g' && p2 === 'z') || (p1 === 'k' && p2 === 's')) {
+            // X 规则触发：当前的 group (可能也就是 g/k) 和 peek (z/s) 被 x 吃掉
+            groupPhonemes.push(peekPh.original);
+            groupDisplayIpa = groupDisplayIpa + peekPh.ipa; // 这里不再加括号，直接连起来
+            groupTtsIpa = groupTtsIpa + " " + peekPh.ipa;
+            score = Math.min(score, peekPh.score); // 取最低分
+            chunkSize = 1; // x 只占 1 个字母
+            i++; // 消费 peek
           }
         }
-
-        // 2. 处理结尾的 'le' -> /l/ (多字母对应一音素)
-        const remainingLetters = letters.length - letterIndex;
-        if (i === pCount - 1 && remainingLetters >= 2 && letters.endsWith("le") && phList[i] === "l") {
+        // le 规则 (通常是 ax l 或 l)
+        // 如果我们的 group 已经是 (ə)l，且结尾是 le
+        else if (groupDisplayIpa.includes('l') && letters.endsWith('le') && i >= pCount - 1 && remainingLetters >= 2) {
           chunkSize = remainingLetters;
         }
-        // 3. 处理辅音组合 (th, sh 等)
+        // 常见组合规则
         else if (COMMON_CLUSTERS.includes(letters.substr(letterIndex, 2)) && remainingLetters > 2) {
           chunkSize = 2;
         }
-        // 4. 默认权重
+        // 默认权重：平分
         else {
-          chunkSize = Math.max(1, Math.ceil(remainingLetters / (pCount - i)));
+          // 简单策略：remainingLetters / (pCount - i)
+          // 但 pCount - i 是剩余的原始音素数，不对。
+          // 我们用最简单的 1 吧，反正大部分是一对一。
+          chunkSize = 1;
         }
 
         if (letterIndex + chunkSize > letters.length) chunkSize = letters.length - letterIndex;
-        const chunk = word.substr(letterIndex, chunkSize);
 
-        alignedGroups.push({
-          letters: chunk,
-          phonemes: [ph],
-          displayPh: displayPh,
-          score: ph.PronunciationAssessment?.AccuracyScore || 0
+        const chunkStr = word.substr(letterIndex, chunkSize);
+
+        finalGroups.push({
+          letters: chunkStr,
+          displayPh: groupDisplayIpa,
+          ttsIpa: groupTtsIpa,
+          score: score,
+          rawPhonemes: groupPhonemes
         });
 
         letterIndex += chunkSize;
       }
 
-      return alignedGroups;
+      return finalGroups;
     }
 
     /* ===== Render UI ===== */
@@ -427,13 +493,16 @@
       alignedData.forEach(group => {
         const score = group.score;
         let colorClass = "bg-poor";
+        // 宽松一点评分颜色
         if (score >= 80) colorClass = "bg-good";
         else if (score >= 60) colorClass = "bg-fair";
 
+        // 如果是弱读合并的，可能想给个特殊样式？暂时不用。
+
         const div = document.createElement("div");
         div.className = "bar-group";
-        // 如果包含多个音素，点击时播放第一个（或可扩展为顺序播放）
-        div.onclick = () => playPhoneme(group.phonemes[0].Phoneme, group.displayPh);
+        // 如果包含多个音素，播放组合音
+        div.onclick = () => playPhoneme(group.ttsIpa, group.displayPh);
 
         const lDiv = document.createElement("div");
         lDiv.className = "bar-letter";
@@ -441,6 +510,7 @@
 
         const iDiv = document.createElement("div");
         iDiv.className = "bar-ipa";
+        // 移除IPA中的括号用于纯净显示？不，用户要求带括号
         iDiv.innerText = `/${group.displayPh}/`;
 
         const sDiv = document.createElement("div");
@@ -452,19 +522,32 @@
         div.appendChild(sDiv);
         barsContainer.appendChild(div);
       });
+
+      // 启用回放按钮
+      if (lastRecordedBlob) {
+        playbackBtn.disabled = false;
+        playbackBtn.innerText = "回放我的发音";
+      }
     }
 
     // Play Phoneme
-    async function playPhoneme(ttsPhoneme, displayPhoneme) {
-      const tip = PhonemeTips[displayPhoneme] || PhonemeTips[convertUsToIpa(ttsPhoneme)] || PhonemeTips[ttsPhoneme];
+    async function playPhoneme(ttsIpa, displayPhoneme) {
+      // 提示处理 (简化：取第一个字符做key?? 不，尽量匹配)
+      // 删除括号再匹配提示
+      const cleanKey = displayPhoneme.replace(/[()]/g, '').trim();
+      // 如果是组合音，尝试拆分找提示 (只显示第一个提示？)
+      // 简单处理：如果找不到组合的提示，就找第一个音素的
+      let tip = PhonemeTips[cleanKey] || PhonemeTips[cleanKey.split(' ')[0]];
+
       if (tip) {
         showTip(displayPhoneme, tip);
       }
 
       try {
+        // 使用 Christopher 且使用 IPA
         const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-      <voice name="en-US-AvaMultilingualNeural">
-        <phoneme alphabet="ipa" ph="${ttsPhoneme}"> ${ttsPhoneme} </phoneme>
+      <voice name="en-US-ChristopherNeural">
+        <phoneme alphabet="ipa" ph="${ttsIpa}"> ${targetWord} </phoneme>
       </voice>
     </speak>`;
 
@@ -473,8 +556,12 @@
 
         const res = await fetch(apiUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ssml })
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            ssml
+          })
         }).catch(netErr => {
           console.error("Fetch Error:", netErr);
           alert("网络请求被拦截，请检查是否处于 Anki 离线环境或防火墙设置。");
@@ -505,7 +592,6 @@
     function showTip(ph, text) {
       tipBox.style.display = "block";
       tipBox.innerText = `/${ph}/ : ${text}`;
-      setTimeout(() => { tipBox.style.display = "none"; }, 3000);
     }
 
     /* ===== Recording Logic ===== */
