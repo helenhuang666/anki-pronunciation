@@ -247,21 +247,34 @@
       }
     }
 
-    /* Tip Box */
-    #tip-box {
-      width: 90%;
-      background: #f1f8ff;
-      /* 浅淡蓝背景 */
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 14px;
-      color: #01579b;
-      /* 深蓝色文字 */
-      margin-bottom: 10px;
-      border: 1px solid #0288d1;
-      text-align: center;
-      display: none;
-      box-shadow: 0 4px 12px rgba(2, 136, 209, 0.1);
+    /* Debug Console */
+    #debug-console {
+      margin: 10px;
+      padding: 10px;
+      background: #333;
+      color: #0f0;
+      font-family: monospace;
+      font-size: 11px;
+      border-radius: 6px;
+      max-height: 120px;
+      overflow-y: auto;
+      display: block;
+      /* 暂时开启以便诊断 */
+      text-align: left;
+      line-height: 1.4;
+      border: 1px solid #555;
+    }
+
+    .debug-line {
+      margin-bottom: 2px;
+    }
+
+    .debug-err {
+      color: #ff5252;
+    }
+
+    .debug-ok {
+      color: #4caf50;
     }
   </style>
 </head>
@@ -283,14 +296,23 @@
       <div style="color:#666; font-size: 16px; margin: 20px; text-align: center; line-height: 1.6;">
         <div style="font-weight: 600; color: #0288d1; margin-bottom: 8px;">测评模式已就绪</div>
         点击下方蓝色麦克风开始录音<br>
-        建议对比测试单词：<b>Apple</b>
+        建议测试单词：<b>Apple</b>
       </div>
+    </div>
+
+    <!-- Debug Output -->
+    <div id="debug-console">
+      <div class="debug-line">[SYS] 等待启动...</div>
     </div>
 
   </div>
 
   <!-- Bottom Controls -->
   <div class="controls">
+    <div style="display:flex; gap:10px; margin-bottom:10px;">
+      <button id="testAzureBtn" class="playback-btn" style="background:#009688;">测试云端连接</button>
+      <button id="playbackBtn" class="playback-btn" disabled>回放</button>
+    </div>
     <button id="recordBtn" class="mic-button">
       <!-- Mic Icon -->
       <svg viewBox="0 0 24 24">
@@ -300,7 +322,6 @@
       </svg>
     </button>
     <div class="status-text" id="status">点击录音</div>
-    <button id="playbackBtn" class="playback-btn" disabled>回放我的发音</button>
   </div>
 
   <script type="module">
@@ -324,12 +345,24 @@
 
     const recordBtn = document.getElementById("recordBtn");
     const playbackBtn = document.getElementById("playbackBtn");
+    const testAzureBtn = document.getElementById("testAzureBtn");
     const statusLabel = document.getElementById("status");
     const barsContainer = document.getElementById("bars-container");
     const mainScoreEl = document.getElementById("main-score");
     const scoreHeader = document.getElementById("score-header");
     const starsEl = document.getElementById("stars");
     const tipBox = document.getElementById("tip-box");
+
+    // ===== Debug Logger =====
+    const debugConsole = document.getElementById("debug-console");
+    function logDebug(msg, type = "") {
+      const line = document.createElement("div");
+      line.className = "debug-line" + (type ? " debug-" + type : "");
+      line.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
+      debugConsole.appendChild(line);
+      debugConsole.scrollTop = debugConsole.scrollHeight;
+      console.log("[DEBUG]", msg);
+    }
 
     // ===== 常见辅音组合预设 (解决切割不准问题) =====
     const COMMON_CLUSTERS = [
@@ -497,52 +530,61 @@
     };
 
     async function startRecord() {
-      console.log("[REC] Starting MediaRecorder...");
+      logDebug("正在请求麦克风权限...");
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        logDebug("麦克风权限已获准", "ok");
 
         // 我们不指定 MIME 类型，让浏览器自由选择最稳定的 (webm/ogg)
         mediaRecorder = new MediaRecorder(stream);
         audioBlobs = [];
 
         mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) audioBlobs.push(event.data);
+          if (event.data.size > 0) {
+            audioBlobs.push(event.data);
+            logDebug(`接收到音频分片: ${event.data.size} bytes`);
+          }
         };
 
         mediaRecorder.onstop = async () => {
-          console.log("[REC] Stopped. Converting for Azure...");
+          logDebug("录音已停止，开始封装 Blob...");
           const blob = new Blob(audioBlobs, { type: mediaRecorder.mimeType });
+          logDebug(`封装完成: ${blob.size} bytes, 类型: ${blob.type}`, "ok");
 
           // 1. 保存用于回放的原声 (确保回放绝对有声)
           lastRecordedBlob = blob;
           playbackBtn.disabled = false;
-          playbackBtn.innerText = "回放我的录音";
+          playbackBtn.innerText = "回放";
 
           // 2. 强力转码：AudioContext 解码 -> 重采样 -> WAV
           try {
             statusLabel.innerText = "正在转码及评分...";
+            logDebug("开始 16kHz 重采样转码...");
             const wavBlob = await convertToAzureWav(blob);
+            logDebug(`转码成功: ${wavBlob.size} bytes PCM WAV`, "ok");
             sendCheck(wavBlob);
           } catch (err) {
-            console.error("Transcode Error:", err);
-            statusLabel.innerText = "音频解码失败";
+            logDebug(`转码失败: ${err.message}`, "err");
+            statusLabel.innerText = "音频转码错误";
           }
         };
 
-        mediaRecorder.start();
+        mediaRecorder.start(500); // 间隔500ms触发一次 dataavailable
+        logDebug("MediaRecorder 已启动");
         recording = true;
         recordBtn.classList.add("recording");
-        statusLabel.innerText = "正在录音，点击停止";
+        statusLabel.innerText = "正在录制...";
 
         window.recStream = stream;
       } catch (e) {
-        console.error("[REC] Mic Error:", e);
+        logDebug(`麦克风启动失败: ${e.name} - ${e.message}`, "err");
         alert("麦克风启动失败，请确保已授予权限或处于 HTTPS 环境。");
       }
     }
 
     function stopRecord() {
       if (!recording || !mediaRecorder) return;
+      logDebug("停止录音...");
       recording = false;
       recordBtn.classList.remove("recording");
 
@@ -556,16 +598,31 @@
     async function convertToAzureWav(blob) {
       const buffer = await blob.arrayBuffer();
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const audioData = await ctx.decodeAudioData(buffer);
+
+      // 兼容 iOS 异步解码
+      const audioData = await new Promise((resolve, reject) => {
+        ctx.decodeAudioData(buffer, resolve, (err) => {
+          logDebug(`音频解码错误: ${err ? err.message : '未知'}`, "err");
+          reject(err || new Error("Decode failed"));
+        });
+      });
 
       // 创建 16000Hz 的离线上下文进行重采样
-      const offlineCtx = new OfflineAudioContext(1, (audioData.duration * 16000), 16000);
+      const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const offlineCtx = new OfflineCtx(1, Math.ceil(audioData.duration * 16000), 16000);
+
       const source = offlineCtx.createBufferSource();
       source.buffer = audioData;
       source.connect(offlineCtx.destination);
       source.start();
 
-      const resampledData = await offlineCtx.startRendering();
+      // 兼容旧版 startRendering 回调格式
+      const resampledData = await new Promise((resolve) => {
+        offlineCtx.oncomplete = (e) => resolve(e.renderedBuffer);
+        const promise = offlineCtx.startRendering();
+        if (promise && promise.then) promise.then(resolve);
+      });
+
       const pcmBlob = encodeWAVFromFloat(resampledData.getChannelData(0));
       await ctx.close();
       return pcmBlob;
@@ -595,29 +652,45 @@
       return new Blob([buffer], { type: 'audio/wav' });
     }
 
+    testAzureBtn.onclick = async () => {
+      logDebug("正在测试云端连通性（发送 0.5s 静音）...");
+      const silentBuffer = new Float32Array(8000); // 0.5s at 16k
+      const blob = encodeWAVFromFloat(silentBuffer);
+      sendCheck(blob);
+    };
+
     playbackBtn.onclick = () => {
       if (lastRecordedBlob) {
+        logDebug("请求录音回放...");
         const audio = new Audio(URL.createObjectURL(lastRecordedBlob));
         audio.play().catch(e => {
-          console.warn("Autoplay block", e);
-          alert("点击页面任意处以激活播放");
+          logDebug(`回放失败: ${e.message}`, "err");
+          alert("请先点击页面任意处以解除浏览器静音限制");
         });
       }
     };
 
     async function sendCheck(blob) {
+      logDebug(`发起评分请求: /assess?text=${targetWord}`);
       try {
-        const res = await fetch(`/assess?text=${targetWord}`, { method: "POST", body: blob });
+        const res = await fetch(`/assess?text=${targetWord}`, {
+          method: "POST",
+          body: blob
+        });
+        logDebug(`后端响应码: ${res.status}`);
         const data = await res.json();
+
         if (data.NBest && data.NBest.length > 0) {
+          logDebug("评分成功接收", "ok");
           statusLabel.innerText = "测评完成";
           renderResult(data.NBest[0]);
         } else {
-          statusLabel.innerText = "识别失败: " + (data.RecognitionStatus || "请重试");
+          logDebug(`评分结果异常: ${data.RecognitionStatus}`, "err");
+          statusLabel.innerText = "未识别到语音";
         }
       } catch (e) {
-        statusLabel.innerText = "后端服务未响应";
-        console.error(e);
+        logDebug(`上传失败: ${e.message}`, "err");
+        statusLabel.innerText = "网络请求失败";
       }
     }
 
