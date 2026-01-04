@@ -280,7 +280,11 @@
 
     <!-- Bars Area -->
     <div class="bars-container" id="bars-container">
-      <div style="color:#aaa; font-size: 16px; margin-top:20px;">点击下方麦克风开始测评</div>
+      <div style="color:#666; font-size: 16px; margin: 20px; text-align: center; line-height: 1.6;">
+        <div style="font-weight: 600; color: #0288d1; margin-bottom: 8px;">测评模式已就绪</div>
+        点击下方蓝色麦克风开始录音<br>
+        建议对比测试单词：<b>Apple</b>
+      </div>
     </div>
 
   </div>
@@ -303,7 +307,7 @@
     import { PhonemeTips } from "./phoneme_tips.js";
 
     const params = new URLSearchParams(window.location.search);
-    const targetWord = decodeURIComponent(params.get("word") || "Example");
+    const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const userIpa = decodeURIComponent(params.get("ipa") || "");
 
     // 立即显示单词
@@ -314,8 +318,8 @@
 
     /* ===== State ===== */
     let recording = false;
-    let audioContext = null;
-    let chunks = [];
+    let mediaRecorder = null;
+    let audioBlobs = [];
     let lastRecordedBlob = null;
 
     const recordBtn = document.getElementById("recordBtn");
@@ -483,7 +487,7 @@
       } catch (e) { console.error("TTS Error", e); }
     }
 
-    /* ===== Recording Logic (Standard & Clean) ===== */
+    /* ===== Recording Logic (Modern & Resampled) ===== */
     recordBtn.onclick = async () => {
       if (!recording) {
         await startRecord();
@@ -493,62 +497,111 @@
     };
 
     async function startRecord() {
-      console.log("[REC] Starting with ScriptProcessor...");
+      console.log("[REC] Starting MediaRecorder...");
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-        if (audioContext.state === 'suspended') await audioContext.resume();
 
-        const input = audioContext.createMediaStreamSource(stream);
-        const processor = audioContext.createScriptProcessor(4096, 1, 1);
-        chunks = [];
+        // 我们不指定 MIME 类型，让浏览器自由选择最稳定的 (webm/ogg)
+        mediaRecorder = new MediaRecorder(stream);
+        audioBlobs = [];
 
-        processor.onaudioprocess = e => {
-          if (recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) audioBlobs.push(event.data);
         };
 
-        input.connect(processor);
-        processor.connect(audioContext.destination);
+        mediaRecorder.onstop = async () => {
+          console.log("[REC] Stopped. Converting for Azure...");
+          const blob = new Blob(audioBlobs, { type: mediaRecorder.mimeType });
 
+          // 1. 保存用于回放的原声 (确保回放绝对有声)
+          lastRecordedBlob = blob;
+          playbackBtn.disabled = false;
+          playbackBtn.innerText = "回放我的录音";
+
+          // 2. 强力转码：AudioContext 解码 -> 重采样 -> WAV
+          try {
+            statusLabel.innerText = "正在转码及评分...";
+            const wavBlob = await convertToAzureWav(blob);
+            sendCheck(wavBlob);
+          } catch (err) {
+            console.error("Transcode Error:", err);
+            statusLabel.innerText = "音频解码失败";
+          }
+        };
+
+        mediaRecorder.start();
         recording = true;
         recordBtn.classList.add("recording");
         statusLabel.innerText = "正在录音，点击停止";
 
         window.recStream = stream;
-        window.recProcessor = processor;
-        window.recInput = input;
       } catch (e) {
-        console.error("[REC] Error:", e);
-        alert("无法访问麦克风: " + e.message);
+        console.error("[REC] Mic Error:", e);
+        alert("麦克风启动失败，请确保已授予权限或处于 HTTPS 环境。");
       }
     }
 
     function stopRecord() {
-      if (!recording) return;
+      if (!recording || !mediaRecorder) return;
       recording = false;
       recordBtn.classList.remove("recording");
-      statusLabel.innerText = "正在评分...";
 
-      if (window.recProcessor) window.recProcessor.disconnect();
-      if (window.recInput) window.recInput.disconnect();
-      if (window.recStream) window.recStream.getTracks().forEach(t => t.stop());
-
-      if (audioContext) {
-        setTimeout(() => {
-          const wav = encodeWAV(chunks);
-          lastRecordedBlob = wav;
-          playbackBtn.disabled = false;
-          playbackBtn.innerText = "回放刚才的发音";
-          sendCheck(wav);
-          audioContext.close();
-        }, 200);
+      mediaRecorder.stop();
+      if (window.recStream) {
+        window.recStream.getTracks().forEach(t => t.stop());
       }
+    }
+
+    // 核心工具：将任意浏览器音频 Blob 转为符合 Azure 要求的 16k Mono PCM WAV
+    async function convertToAzureWav(blob) {
+      const buffer = await blob.arrayBuffer();
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioData = await ctx.decodeAudioData(buffer);
+
+      // 创建 16000Hz 的离线上下文进行重采样
+      const offlineCtx = new OfflineAudioContext(1, (audioData.duration * 16000), 16000);
+      const source = offlineCtx.createBufferSource();
+      source.buffer = audioData;
+      source.connect(offlineCtx.destination);
+      source.start();
+
+      const resampledData = await offlineCtx.startRendering();
+      const pcmBlob = encodeWAVFromFloat(resampledData.getChannelData(0));
+      await ctx.close();
+      return pcmBlob;
+    }
+
+    function encodeWAVFromFloat(samples) {
+      const buffer = new ArrayBuffer(44 + samples.length * 2);
+      const view = new DataView(buffer);
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, 36 + samples.length * 2, true);
+      writeString(view, 8, 'WAVE');
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, 1, true); // Mono
+      view.setUint32(24, 16000, true);
+      view.setUint32(28, 32000, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(view, 36, 'data');
+      view.setUint32(40, samples.length * 2, true);
+      let offset = 44;
+      for (let i = 0; i < samples.length; i++, offset += 2) {
+        let s = Math.max(-1, Math.min(1, samples[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      }
+      return new Blob([buffer], { type: 'audio/wav' });
     }
 
     playbackBtn.onclick = () => {
       if (lastRecordedBlob) {
         const audio = new Audio(URL.createObjectURL(lastRecordedBlob));
-        audio.play().catch(e => console.error("Playback failed:", e));
+        audio.play().catch(e => {
+          console.warn("Autoplay block", e);
+          alert("点击页面任意处以激活播放");
+        });
       }
     };
 
@@ -560,10 +613,10 @@
           statusLabel.innerText = "测评完成";
           renderResult(data.NBest[0]);
         } else {
-          statusLabel.innerText = "无法识别: " + (data.RecognitionStatus || "Retry");
+          statusLabel.innerText = "识别失败: " + (data.RecognitionStatus || "请重试");
         }
       } catch (e) {
-        statusLabel.innerText = "评分请求失败";
+        statusLabel.innerText = "后端服务未响应";
         console.error(e);
       }
     }
