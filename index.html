@@ -304,31 +304,15 @@
   <script type="module">
     import { PhonemeTips } from "./phoneme_tips.js";
 
-    // ===== 音标转换映射 (USPhonetic -> 美式 IPA) =====
-    const US_PHONETIC_TO_IPA = {
-      "aa": "ɑ", "ae": "æ", "ah": "ʌ", "ao": "ɔ", "aw": "aʊ", "ax": "ə", "ay": "aɪ",
-      "eh": "e", "er": "ɝ", "ey": "eɪ", "ih": "ɪ", "iy": "i", "ow": "oʊ", "oy": "ɔɪ",
-      "uh": "ʊ", "uw": "u", "ch": "tʃ", "dh": "ð", "jh": "dʒ", "ng": "ŋ", "sh": "ʃ",
-      "th": "θ", "zh": "ʒ", "y": "j", "d": "d", "f": "f", "g": "g", "h": "h",
-      "k": "k", "l": "l", "m": "m", "n": "n", "p": "p", "r": "r", "s": "s",
-      "t": "t", "v": "v", "w": "w", "z": "z"
-    };
-
-    function convertUsToIpa(ph) {
-      // 处理可能带重音符号的音丝（Azure 有时会带数字）
-      const cleanPh = ph.toLowerCase().replace(/[0-9]/g, '');
-      return US_PHONETIC_TO_IPA[cleanPh] || ph;
-    }
-
     const params = new URLSearchParams(window.location.search);
     const targetWord = decodeURIComponent(params.get("word") || "Example");
-    const userIpa = decodeURIComponent(params.get("ipa") || ""); // 明确处理空值
+    const userIpa = decodeURIComponent(params.get("ipa") || "");
 
     // 立即显示单词
     document.getElementById("target-word").innerText = targetWord;
     const targetIpaEl = document.getElementById("target-ipa");
     if (userIpa) {
-      // 统一格式显示：/ih g z ae m p ax l/
+      // 统一格式显示，去除 Arpabet 痕迹
       targetIpaEl.innerText = `/${userIpa.trim().replace(/^\/|\/$/g, '')}/`;
     } else {
       targetIpaEl.innerText = "";
@@ -362,10 +346,10 @@
       let letterIndex = 0;
       const pCount = phonemes.length;
 
-      // 转换所有音素为小写，并预计算 IPA 供后续使用
+      // 转换所有音素，优先使用 Azure 返回的 IPA (如果是 phoneme granularity)
       const phObjects = phonemes.map(p => ({
-        raw: p.Phoneme.toLowerCase(),
-        ipa: convertUsToIpa(p.Phoneme),
+        raw: p.Phoneme,
+        ipa: p.IPA || p.Phoneme, // Azure 的 Phoneme 在 Phoneme 粒度下通常就是 IPA，或者会有单独的 IPA 字段
         score: p.PronunciationAssessment?.AccuracyScore || 0,
         original: p
       }));
@@ -477,7 +461,7 @@
       nbest.Words.forEach(w => {
         if (w.Phonemes) {
           targetPhonemes.push(...w.Phonemes);
-          w.Phonemes.forEach(p => displayPhonemesList.push(convertUsToIpa(p.Phoneme)));
+          w.Phonemes.forEach(p => displayPhonemesList.push(p.IPA || p.Phoneme));
         }
       });
 
@@ -529,11 +513,7 @@
 
     // Play Phoneme
     async function playPhoneme(ttsIpa, displayPhoneme) {
-      // 提示处理 (简化：取第一个字符做key?? 不，尽量匹配)
-      // 删除括号再匹配提示
       const cleanKey = displayPhoneme.replace(/[()]/g, '').trim();
-      // 如果是组合音，尝试拆分找提示 (只显示第一个提示？)
-      // 简单处理：如果找不到组合的提示，就找第一个音素的
       let tip = PhonemeTips[cleanKey] || PhonemeTips[cleanKey.split(' ')[0]];
 
       if (tip) {
@@ -601,21 +581,25 @@
     };
 
     async function startRecord() {
+      console.log("[REC-DEBUG] Initiating startRecord...");
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log("[REC-DEBUG] Mic permission granted.");
 
         audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-        // Resume context for iOS
         if (audioContext.state === 'suspended') {
           await audioContext.resume();
         }
+        console.log("[REC-DEBUG] AudioContext state:", audioContext.state);
 
         const input = audioContext.createMediaStreamSource(stream);
         const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
         chunks = [];
         processor.onaudioprocess = e => {
-          chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+          if (recording) {
+            chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+          }
         };
 
         input.connect(processor);
@@ -624,13 +608,14 @@
         recording = true;
         recordBtn.classList.add("recording");
         statusLabel.innerText = "点击停止";
+        console.log("[REC-DEBUG] Recording started.");
 
         window.recStream = stream;
         window.recProcessor = processor;
         window.recInput = input;
 
       } catch (e) {
-        console.error(e);
+        console.error("[REC-DEBUG] Start Error:", e);
         alert("无法访问麦克风: " + e.message);
       }
     }
