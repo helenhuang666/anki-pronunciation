@@ -312,18 +312,17 @@
     document.getElementById("target-word").innerText = targetWord;
     const targetIpaEl = document.getElementById("target-ipa");
     if (userIpa) {
-      // 统一格式显示，去除 Arpabet 痕迹
       targetIpaEl.innerText = `/${userIpa.trim().replace(/^\/|\/$/g, '')}/`;
-    } else {
-      targetIpaEl.innerText = "";
     }
 
     /* ===== State ===== */
     let recording = false;
     let audioContext = null;
     let chunks = [];
+    let lastRecordedBlob = null;
 
     const recordBtn = document.getElementById("recordBtn");
+    const playbackBtn = document.getElementById("playbackBtn");
     const statusLabel = document.getElementById("status");
     const barsContainer = document.getElementById("bars-container");
     const mainScoreEl = document.getElementById("main-score");
@@ -334,24 +333,20 @@
     // ===== 常见辅音组合预设 (解决切割不准问题) =====
     const COMMON_CLUSTERS = [
       "th", "sh", "ch", "ph", "gh", "ck", "wh", "ng", "qu", "oo", "ea", "ai", "ou", "ee",
-      // 双辅音
       "pp", "tt", "bb", "dd", "ff", "gg", "mm", "nn", "rr", "ss", "ll"
     ];
 
-
-    /* ===== 增强型字母-音素对齐逻辑 (支持单字母多音素合并 & 弱读合并) ===== */
+    /* ===== 增强型字母-音素对齐逻辑 (支持合并显示) ===== */
     function alignLettersToPhonemes(word, phonemes) {
       const letters = word.toLowerCase();
-      const alignedGroups = [];
-      let letterIndex = 0;
       const pCount = phonemes.length;
+      let letterIndex = 0;
 
-      // 转换所有音素，优先使用 Azure 返回的 IPA (如果是 phoneme granularity)
+      // 预处理音素
       const phObjects = phonemes.map(p => ({
-        raw: p.Phoneme,
-        ipa: p.IPA || p.Phoneme, // Azure 的 Phoneme 在 Phoneme 粒度下通常就是 IPA，或者会有单独的 IPA 字段
+        ipa: p.IPA || p.Phoneme, // 核心：使用 Azure 返回的 IPA
         score: p.PronunciationAssessment?.AccuracyScore || 0,
-        original: p
+        raw: p
       }));
 
       const finalGroups = [];
@@ -360,88 +355,63 @@
         let curr = phObjects[i];
         let next = i + 1 < pCount ? phObjects[i + 1] : null;
 
-        let groupPhonemes = [curr.original];
+        let groupPhonemes = [curr.raw];
         let groupDisplayIpa = curr.ipa;
         let groupTtsIpa = curr.ipa;
         let score = curr.score;
 
-        // 1. 弱读合并检测：当前是 ə (ax)，且有下一个
+        // 1. 弱读合并逻辑 (ə)
         if (curr.ipa === "ə" && next) {
-          // 合并 next 进来
-          groupPhonemes.push(next.original);
+          groupPhonemes.push(next.raw);
           groupDisplayIpa = `(${curr.ipa})${next.ipa}`;
           groupTtsIpa = `${curr.ipa} ${next.ipa}`;
-          score = (curr.score + next.score) / 2; // 取平均分
-
-          // 步进，因为 next 已经被消费
-          i++;
-          // 更新 curr/next 指针给后续逻辑判断 (比如 le 判断)
-          // 注意：现在的“主导”音素变成了 next
-          curr = next; // curr现在代表了组合的第二个音素
-          next = i + 1 < pCount ? phObjects[i + 1] : null; // 重新获取下一个
+          score = (curr.score + next.score) / 2;
+          i++; // 跳过 next
+          curr = phObjects[i]; // 更新当前引用
+          next = i + 1 < pCount ? phObjects[i + 1] : null;
         }
 
-        // 2. 字母切割
+        // 2. 字母切割逻辑
         const remainingLetters = letters.length - letterIndex;
-        const curChar = letters[letterIndex] || ''; // 当前字母，可能为空
+        const curChar = letters[letterIndex] || "";
+        const tailPh = groupPhonemes[groupPhonemes.length - 1].Phoneme.toLowerCase();
+        let chunkSize = 1;
 
-        // 检查 x 规则 (针对 group 中的最后一个音素和 再下一个音素)
-        // 现在的 group 可能包含 [ə, next] 或者 [curr]。
-        // 我们看 group 的最后一个音素 tailPh
-        const tailPh = groupPhonemes[groupPhonemes.length - 1];
-        const tailPhRaw = tailPh.Phoneme.toLowerCase();
-
-        // 检查是否有下一个待处理音素 (peek)
+        // 检查 'x' 规则 (针对 group 尾部音素 + peek)
         const peekIndex = i + 1;
         const peekPh = peekIndex < pCount ? phObjects[peekIndex] : null;
 
-        let chunkSize = 1;
-
         if (curChar === 'x' && peekPh) {
-          const p1 = tailPhRaw;
-          const p2 = peekPh.raw;
-          if ((p1 === 'g' && p2 === 'z') || (p1 === 'k' && p2 === 's')) {
-            // X 规则触发：当前的 group (可能也就是 g/k) 和 peek (z/s) 被 x 吃掉
-            groupPhonemes.push(peekPh.original);
-            groupDisplayIpa = groupDisplayIpa + peekPh.ipa; // 这里不再加括号，直接连起来
-            groupTtsIpa = groupTtsIpa + " " + peekPh.ipa;
-            score = Math.min(score, peekPh.score); // 取最低分
-            chunkSize = 1; // x 只占 1 个字母
-            i++; // 消费 peek
+          const p1 = tailPh;
+          const p2 = peekPh.raw.Phoneme.toLowerCase();
+          // Azure 即使在 IPA 模式下，Phoneme 字段可能还是保留原始代码或对应音素
+          if ((p1 === 'g' || p1 === 'k') && (p2 === 'z' || p2 === 's')) {
+            groupPhonemes.push(peekPh.raw);
+            groupDisplayIpa += peekPh.ipa;
+            groupTtsIpa += " " + peekPh.ipa;
+            score = Math.min(score, peekPh.score);
+            i++;
+            chunkSize = 1;
           }
         }
-        // le 规则 (通常是 ax l 或 l)
-        // 如果我们的 group 已经是 (ə)l，且结尾是 le
         else if (groupDisplayIpa.includes('l') && letters.endsWith('le') && i >= pCount - 1 && remainingLetters >= 2) {
           chunkSize = remainingLetters;
         }
-        // 常见组合规则
         else if (COMMON_CLUSTERS.includes(letters.substr(letterIndex, 2)) && remainingLetters > 2) {
           chunkSize = 2;
         }
-        // 默认权重：平分
-        else {
-          // 简单策略：remainingLetters / (pCount - i)
-          // 但 pCount - i 是剩余的原始音素数，不对。
-          // 我们用最简单的 1 吧，反正大部分是一对一。
-          chunkSize = 1;
-        }
 
         if (letterIndex + chunkSize > letters.length) chunkSize = letters.length - letterIndex;
-
         const chunkStr = word.substr(letterIndex, chunkSize);
 
         finalGroups.push({
           letters: chunkStr,
           displayPh: groupDisplayIpa,
           ttsIpa: groupTtsIpa,
-          score: score,
-          rawPhonemes: groupPhonemes
+          score: score
         });
-
         letterIndex += chunkSize;
       }
-
       return finalGroups;
     }
 
@@ -472,106 +442,51 @@
       const alignedData = alignLettersToPhonemes(targetWord, targetPhonemes);
       barsContainer.innerHTML = "";
       alignedData.forEach(group => {
-        const score = group.score;
-        let colorClass = "bg-poor";
-        // 宽松一点评分颜色
-        if (score >= 80) colorClass = "bg-good";
-        else if (score >= 60) colorClass = "bg-fair";
-
-        // 如果是弱读合并的，可能想给个特殊样式？暂时不用。
-
         const div = document.createElement("div");
         div.className = "bar-group";
-        // 如果包含多个音素，播放组合音
         div.onclick = () => playPhoneme(group.ttsIpa, group.displayPh);
 
-        const lDiv = document.createElement("div");
-        lDiv.className = "bar-letter";
-        lDiv.innerText = group.letters;
+        const score = Math.round(group.score);
+        let colorClass = score >= 80 ? "bg-good" : (score >= 60 ? "bg-fair" : "bg-poor");
 
-        const iDiv = document.createElement("div");
-        iDiv.className = "bar-ipa";
-        // 移除IPA中的括号用于纯净显示？不，用户要求带括号
-        iDiv.innerText = `/${group.displayPh}/`;
-
-        const sDiv = document.createElement("div");
-        sDiv.className = `bar-score ${colorClass}`;
-        sDiv.innerText = Math.round(score);
-
-        div.appendChild(lDiv);
-        div.appendChild(iDiv);
-        div.appendChild(sDiv);
+        div.innerHTML = `
+          <div class="bar-letter">${group.letters}</div>
+          <div class="bar-ipa">/${group.displayPh}/</div>
+          <div class="bar-score ${colorClass}">${score}</div>
+        `;
         barsContainer.appendChild(div);
       });
-
-      // 启用回放按钮
-      if (lastRecordedBlob) {
-        playbackBtn.disabled = false;
-        playbackBtn.innerText = "回放我的发音";
-      }
     }
 
-    // Play Phoneme
+    /* ===== TTS & Tips ===== */
     async function playPhoneme(ttsIpa, displayPhoneme) {
       const cleanKey = displayPhoneme.replace(/[()]/g, '').trim();
       let tip = PhonemeTips[cleanKey] || PhonemeTips[cleanKey.split(' ')[0]];
-
       if (tip) {
-        showTip(displayPhoneme, tip);
+        tipBox.style.display = "block";
+        tipBox.innerText = `/${displayPhoneme}/ : ${tip}`;
       }
 
       try {
-        // 使用 Christopher 且使用 IPA
         const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-      <voice name="en-US-ChristopherNeural">
-        <phoneme alphabet="ipa" ph="${ttsIpa}"> ${targetWord} </phoneme>
-      </voice>
-    </speak>`;
-
-        // 强制使用绝对路径确保请求到达后端
-        const apiUrl = window.location.origin + "/tts";
-
-        const res = await fetch(apiUrl, {
+          <voice name="en-US-ChristopherNeural">
+            <phoneme alphabet="ipa" ph="${ttsIpa}"> ${targetWord} </phoneme>
+          </voice>
+        </speak>`;
+        const res = await fetch(window.location.origin + "/tts", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            ssml
-          })
-        }).catch(netErr => {
-          console.error("Fetch Error:", netErr);
-          alert("网络请求被拦截，请检查是否处于 Anki 离线环境或防火墙设置。");
-          throw netErr;
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ssml })
         });
-
         if (res.ok) {
           const blob = await res.blob();
-          const audioUrl = URL.createObjectURL(blob);
-          const audio = new Audio();
-          audio.src = audioUrl;
-
-          audio.load();
-          audio.play().catch(e => {
-            console.warn("Autoplay blocked:", e);
-            statusLabel.innerText = "点击竖条试听";
-          });
-        } else {
-          const err = await res.json().catch(() => ({}));
-          console.error("TTS Backend Failed:", res.status, err);
-          alert(`发音失败 (HTTP ${res.status}): ${err.reason || "请检查云端密钥配置"}`);
+          const audio = new Audio(URL.createObjectURL(blob));
+          audio.play();
         }
-      } catch (e) {
-        console.error("TTS Final Error:", e);
-      }
+      } catch (e) { console.error("TTS Error", e); }
     }
 
-    function showTip(ph, text) {
-      tipBox.style.display = "block";
-      tipBox.innerText = `/${ph}/ : ${text}`;
-    }
-
-    /* ===== Recording Logic ===== */
+    /* ===== Recording Logic (UNIQUE & CLEAN) ===== */
     recordBtn.onclick = async () => {
       if (!recording) {
         await startRecord();
@@ -581,25 +496,18 @@
     };
 
     async function startRecord() {
-      console.log("[REC-DEBUG] Initiating startRecord...");
+      console.log("[REC] Starting...");
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.log("[REC-DEBUG] Mic permission granted.");
-
         audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-        }
-        console.log("[REC-DEBUG] AudioContext state:", audioContext.state);
+        if (audioContext.state === 'suspended') await audioContext.resume();
 
         const input = audioContext.createMediaStreamSource(stream);
         const processor = audioContext.createScriptProcessor(4096, 1, 1);
-
         chunks = [];
+
         processor.onaudioprocess = e => {
-          if (recording) {
-            chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-          }
+          if (recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
         };
 
         input.connect(processor);
@@ -607,15 +515,13 @@
 
         recording = true;
         recordBtn.classList.add("recording");
-        statusLabel.innerText = "点击停止";
-        console.log("[REC-DEBUG] Recording started.");
+        statusLabel.innerText = "正在录音，点击停止";
 
         window.recStream = stream;
         window.recProcessor = processor;
         window.recInput = input;
-
       } catch (e) {
-        console.error("[REC-DEBUG] Start Error:", e);
+        console.error("[REC] Permission denied", e);
         alert("无法访问麦克风: " + e.message);
       }
     }
@@ -624,30 +530,48 @@
       if (!recording) return;
       recording = false;
       recordBtn.classList.remove("recording");
-      statusLabel.innerText = "正在评分...";
+      statusLabel.innerText = "评分中...";
 
       if (window.recProcessor) window.recProcessor.disconnect();
       if (window.recInput) window.recInput.disconnect();
       if (window.recStream) window.recStream.getTracks().forEach(t => t.stop());
 
-      // Safe stop
       if (audioContext) {
-        // Allow last chunk to process
         setTimeout(() => {
           const wav = encodeWAV(chunks);
-          lastRecordedBlob = wav; // 保存 blob
-
-          // 立即启用回放 (不管评分是否成功)
+          lastRecordedBlob = wav;
           playbackBtn.disabled = false;
-          playbackBtn.innerText = "回放我的发音";
-
+          playbackBtn.innerText = "回放刚才的发音";
           sendCheck(wav);
           audioContext.close();
         }, 200);
       }
     }
 
-    /* ===== Utilities ===== */
+    playbackBtn.onclick = () => {
+      if (lastRecordedBlob) {
+        const audio = new Audio(URL.createObjectURL(lastRecordedBlob));
+        audio.play();
+      }
+    };
+
+    async function sendCheck(blob) {
+      try {
+        const res = await fetch(`/assess?text=${targetWord}`, { method: "POST", body: blob });
+        const data = await res.json();
+        if (data.NBest && data.NBest.length > 0) {
+          statusLabel.innerText = "测评完成";
+          renderResult(data.NBest[0]);
+        } else {
+          statusLabel.innerText = "识别失败: " + (data.RecognitionStatus || "Unknown");
+        }
+      } catch (e) {
+        statusLabel.innerText = "评分请求出错";
+        console.error(e);
+      }
+    }
+
+    /* ===== WAV Encoder ===== */
     function encodeWAV(buffers) {
       let len = buffers.reduce((s, b) => s + b.length, 0);
       let pcm = new Int16Array(len);
@@ -658,10 +582,8 @@
           pcm[offset] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
       });
-
       const wav = new ArrayBuffer(44 + pcm.length * 2);
       const view = new DataView(wav);
-
       writeString(view, 0, 'RIFF');
       view.setUint32(4, 36 + pcm.length * 2, true);
       writeString(view, 8, 'WAVE');
@@ -675,13 +597,11 @@
       view.setUint16(34, 16, true);
       writeString(view, 36, 'data');
       view.setUint32(40, pcm.length * 2, true);
-
       let p = 44;
       for (let i = 0; i < pcm.length; i++) {
         view.setInt16(p, pcm[i], true);
         p += 2;
       }
-
       return new Blob([view], { type: 'audio/wav' });
     }
 
@@ -690,32 +610,8 @@
         view.setUint8(offset + i, string.charCodeAt(i));
       }
     }
-
-    async function sendCheck(blob) {
-      try {
-        const res = await fetch(`/assess?text=${targetWord}`, {
-          method: "POST",
-          body: blob
-        });
-
-        const data = await res.json();
-
-        if (data.NBest && data.NBest.length > 0) {
-          statusLabel.innerText = "评分完成";
-          renderResult(data.NBest[0]);
-        } else {
-          const status = data.RecognitionStatus || "Fail";
-          statusLabel.innerText = "未识别: " + status;
-          if (status === 'NoMatch') {
-            alert("未检测到有效语音，请重试");
-          }
-        }
-      } catch (e) {
-        statusLabel.innerText = "网络/服务错误";
-        console.error(e);
-      }
-    }
   </script>
 </body>
 
 </html>
+```
