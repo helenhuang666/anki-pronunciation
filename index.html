@@ -20,7 +20,6 @@
       flex-direction: column;
       justify-content: space-between;
       overflow: hidden;
-      zoom: 0.8;
       /* Scale global UI by 80% */
     }
 
@@ -29,7 +28,6 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
       padding: 20px;
       overflow-y: auto;
       /* Allow scrolling if content is tall */
@@ -67,6 +65,7 @@
       color: #333;
       margin-bottom: 4px;
       text-align: center;
+      margin-top: 20px;
     }
 
     #target-ipa {
@@ -80,7 +79,7 @@
     /* ===== Total Score & Stars ===== */
     .score-header {
       text-align: center;
-      margin-bottom: 40px;
+      margin-bottom: auto;
       transition: opacity 0.3s;
     }
 
@@ -273,18 +272,13 @@
 
   <div class="container">
 
-    <div id="tip-box"></div>
-
-    <!-- Target Word Display -->
-    <div id="target-word"></div>
-    <!-- IPA Display -->
-    <div id="target-ipa"></div>
-
     <!-- Score Header -->
     <div class="score-header" id="score-header" style="opacity: 0;">
       <div class="total-score" id="main-score">0<span class="score-unit">分</span></div>
       <div class="stars" id="stars">★★★★★</div>
     </div>
+
+    <div id="tip-box"></div>
 
     <!-- Bars Area -->
     <div class="bars-container" id="bars-container">
@@ -355,8 +349,35 @@
 
     // ===== 常见辅音组合预设 (解决切割不准问题) =====
     const COMMON_CLUSTERS = [
-      "th", "sh", "ch", "ph", "gh", "ck", "wh", "ng", "qu", "oo", "ea", "ai", "ou", "ee"
+      "th", "sh", "ch", "ph", "gh", "ck", "wh", "ng", "qu", "oo", "ea", "ai", "ou", "ee",
+      // 双辅音
+      "pp", "tt", "bb", "dd", "ff", "gg", "mm", "nn", "rr", "ss", "ll"
     ];
+
+    function stopRecord() {
+      if (!recording) return;
+      recording = false;
+      recordBtn.classList.remove("recording");
+      statusLabel.innerText = "正在评分...";
+
+      if (window.recProcessor) window.recProcessor.disconnect();
+      if (window.recInput) window.recInput.disconnect();
+      if (window.recStream) window.recStream.getTracks().forEach(t => t.stop());
+
+      if (audioContext) {
+        setTimeout(() => {
+          const wav = encodeWAV(chunks);
+          lastRecordedBlob = wav; // 保存 blob
+
+          // 立即启用回放 (不管评分是否成功)
+          playbackBtn.disabled = false;
+          playbackBtn.innerText = "回放我的发音";
+
+          sendCheck(wav);
+          audioContext.close();
+        }, 200);
+      }
+    }
 
     /* ===== 增强型字母-音素对齐逻辑 (支持单字母多音素合并 & 弱读合并) ===== */
     function alignLettersToPhonemes(word, phonemes) {
