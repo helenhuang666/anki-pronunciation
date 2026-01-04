@@ -422,6 +422,11 @@
         let groupTtsIpa = curr.ipa;
         let score = curr.score;
 
+        // 0. 基础环境初始化
+        const remainingLetters = letters.length - letterIndex;
+        const curChar = letters[letterIndex] || "";
+        const nextChar = letters[letterIndex + 1] || "";
+
         // 1. 特殊合并逻辑 (已按需移除 ə 强制合并)
         const isX = curChar === 'x' && next && (next.ipa === 'z' || next.ipa === 's');
 
@@ -430,13 +435,10 @@
           groupDisplayIpa += next.ipa;
           groupTtsIpa += " " + next.ipa;
           score = Math.min(score, next.score);
-          i++;
+          i++; // 跳过 next 音素
         }
 
         // 2. 字母切割逻辑
-        const remainingLetters = letters.length - letterIndex;
-        const curChar = letters[letterIndex] || "";
-        const nextChar = letters[letterIndex + 1] || "";
         let chunkSize = 1;
 
         // 检查双写字母 (pp, tt, ll, ss...)
