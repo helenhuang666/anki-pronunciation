@@ -126,9 +126,16 @@ app.post("/assess", async (req, res) => {
       return res.status(400).json({ error: "Body must be a buffer" });
     }
 
-    // 1. Setup Audio Stream
-    const pushStream = sdk.AudioInputStream.createPushStream();
-    pushStream.write(req.body);
+    // 1. Setup Audio Stream (Explicitly define format for PCM 16k 16bit Mono)
+    const format = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
+    const pushStream = sdk.AudioInputStream.createPushStream(format);
+
+    // 跳过 WAV 文件头（44字节），直接写入数据，确保评估的是纯 PCM
+    if (req.body.length > 44) {
+      pushStream.write(req.body.slice(44));
+    } else {
+      pushStream.write(req.body);
+    }
     pushStream.close();
 
     const audioConfig = sdk.AudioConfig.fromStreamInput(pushStream);
@@ -158,11 +165,15 @@ app.post("/assess", async (req, res) => {
 
         let jsonStr = result.properties.getProperty(sdk.PropertyId.SpeechServiceResponse_JsonResult);
 
+        if (result.reason === sdk.ResultReason.Canceled) {
+          const cancellation = sdk.CancellationDetails.fromResult(result);
+          console.error(`[ASSESS-SDK] CANCELED: ${cancellation.reason}, ErrorDetails: ${cancellation.errorDetails}`);
+          return res.status(500).json({ error: cancellation.errorDetails, reason: cancellation.reason });
+        }
+
         if (!jsonStr) {
-          // Fallback if no JSON (e.g. Canceled/NoMatch without JSON)
-          // We construct a mock response to allow frontend to see the error
           return res.json({
-            RecognitionStatus: result.reason === sdk.ResultReason.RecognizedSpeech ? "Success" : result.errorDetails || "NoMatch",
+            RecognitionStatus: result.reason === sdk.ResultReason.RecognizedSpeech ? "Success" : (result.errorDetails || "NoMatch"),
             NBest: []
           });
         }
