@@ -62,8 +62,8 @@ app.post("/tts", async (req, res) => {
     }
 
     const speechConfig = sdk.SpeechConfig.fromSubscription(AZURE_KEY, AZURE_REGION);
-    // 使用最稳健的 GuyNeural
-    speechConfig.speechSynthesisVoiceName = "en-US-GuyNeural";
+    // 使用 Christopher (美式男声)
+    speechConfig.speechSynthesisVoiceName = "en-US-ChristopherNeural";
     speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm;
 
     synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
