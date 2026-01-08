@@ -266,6 +266,57 @@
       box-shadow: 0 4px 12px rgba(58, 102, 184, 0.1);
     }
 
+    /* 调试面板样式 */
+    #debug-panel {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      width: 350px;
+      max-height: 400px;
+      overflow-y: auto;
+      background: #fff;
+      border: 2px solid #ff6b6b;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      font-family: monospace;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      z-index: 9999;
+    }
+
+    #debug-panel h3 {
+      margin: 0 0 10px 0;
+      color: #ff6b6b;
+      font-size: 14px;
+    }
+
+    #debug-panel .debug-item {
+      margin: 5px 0;
+      padding: 5px;
+      background: #f8f9fa;
+      border-left: 3px solid #3A66B8;
+    }
+
+    #debug-panel .debug-label {
+      font-weight: bold;
+      color: #333;
+    }
+
+    #debug-panel .debug-value {
+      color: #0066cc;
+      word-break: break-all;
+    }
+
+    #debug-panel .debug-empty {
+      color: #ff6b6b;
+      font-style: italic;
+    }
+
+    #debug-panel .debug-success {
+      color: #28a745;
+      font-weight: bold;
+    }
+
     .mic-button {
       width: 72px;
       height: 72px;
@@ -322,6 +373,12 @@
 <body>
 
   <div class="container">
+    <!-- 调试面板 -->
+    <div id="debug-panel">
+      <h3>🔍 调试信息</h3>
+      <div id="debug-content"></div>
+    </div>
+
     <!-- Header Word & IPA -->
     <div id="target-word">Apple</div>
     <div id="target-ipa"></div>
@@ -377,10 +434,39 @@
     }).catch(e => logDebug("音标提示加载失败"));
 
     const params = new URLSearchParams(window.location.search);
+
+    // 调试信息收集器
+    const debugInfo = [];
+    function addDebug(label, value, isEmpty = false) {
+      debugInfo.push({ label, value, isEmpty });
+      console.log(`${label}:`, value);
+    }
+
+    addDebug("完整 URL", window.location.href);
+    addDebug("--- 所有 URL 参数 ---", "");
+    for (const [key, value] of params.entries()) {
+      addDebug(`  ${key}`, value);
+    }
+    addDebug("--- 抓取结果 ---", "");
+
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
-    // 强制适配 Anki 的 USPhonetic (大小写敏感)
     const userIpa = decodeURIComponent(params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
     const userAudio = decodeURIComponent(params.get("USAudio") || params.get("usaudio") || "");
+
+    addDebug("单词 (word)", targetWord);
+    addDebug("音标 (userIpa)", userIpa || "[未提供]", !userIpa);
+    addDebug("音频 (userAudio)", userAudio || "[未提供]", !userAudio);
+
+    // 渲染调试面板
+    const debugContent = document.getElementById("debug-content");
+    if (debugContent) {
+      debugContent.innerHTML = debugInfo.map(item => `
+        <div class="debug-item">
+          <span class="debug-label">${item.label}:</span>
+          <span class="${item.isEmpty ? 'debug-empty' : 'debug-value'}">${item.value}</span>
+        </div>
+      `).join('');
+    }
 
     // 设备识别
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -396,9 +482,11 @@
 
     // 强制立即显示音标，不做任何正则替换，保留所有原始符号
     if (ipaEl && userIpa) {
-      logDebug("正在回显 USPhonetic: " + userIpa);
+      console.log("✅ 正在显示 USPhonetic:", userIpa);
       ipaEl.innerText = (userIpa.startsWith('/') || userIpa.startsWith('[')) ? userIpa : `/${userIpa}/`;
-      ipaEl.style.color = "#3A66B8"; // 确保颜色正确
+      ipaEl.style.color = "#3A66B8";
+    } else {
+      console.warn("⚠️ 音标未能显示。userIpa =", userIpa, "ipaEl =", ipaEl);
     }
 
     // ===== 音标工具：Arpabet 强制转标准 IPA =====
@@ -864,16 +952,22 @@
     }
 
     stdWordBtn.onclick = () => {
-      // 优先且始终播放 Anki 原生音频 (USAudio)
+      console.log("🔊 点击标准发音按钮");
+      console.log("  userAudio:", userAudio || "[未提供]");
+
+      // ===== 🔒 绝对锁定：只播放 Anki 原生音频，绝不合成 =====
       if (userAudio) {
-        logDebug("播放 Anki 原生音频: " + userAudio);
+        console.log("✅ 播放 Anki 原生音频:", userAudio);
         const audio = new Audio(userAudio);
         audio.play().catch(e => {
-          console.error("USAudio Playback Error", e);
+          console.error("❌ Anki 音频播放失败:", e);
+          alert("原生音频播放失败: " + e.message);
         });
       } else {
-        // 只有在没有 Anki 音频时才使用 fallback
-        fallbackStandardPlay();
+        console.warn("⚠️ 未提供 USAudio 参数，无法播放标准发音");
+        alert("未找到 Anki 音频文件，请检查 USAudio 字段是否正确配置");
+        // ===== 🚫 完全禁用 fallback，绝不合成音频 =====
+        // fallbackStandardPlay(); // 已禁用
       }
     };
 
