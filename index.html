@@ -748,31 +748,27 @@
     }
 
     /* ===== Recording Logic (Modern & Resampled) ===== */
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    // 适配 PC 端 Anki
+    // 适配 PC 端 Anki: 强化识别
     const isWebView = /Anki|WebView|Android.*(wv|.0.0.0)|QtWebEngine/i.test(navigator.userAgent);
 
     recordBtn.onclick = async () => {
+      // 适配逻辑：如果是 Android 或 PC 端的 Anki 内嵌环境，执行逃逸跳转
       if (!isIOS && (isWebView || isAnkiPC) && !recording) {
-        logDebug("触发 PC/Android 跳转序列...");
+        logDebug("触发环境逃逸跳转 (PC/Android)...");
         const externalUrl = window.location.href;
-        try { window.open(externalUrl, "_blank"); } catch (e) { }
-        location.href = externalUrl; // 强行逃出 iframe
+        try {
+          window.open(externalUrl, "_blank");
+        } catch (e) { }
+        location.href = externalUrl; // 物理逃逸
         statusLabel.innerText = "请在外部浏览器中操作";
         return;
       }
-    } catch (e) {
-      window.location.href = window.location.href;
-    }
-    statusLabel.innerText = "请在外部浏览器中操作";
-    return;
-      }
 
-    if (!recording) {
-      await startRecord();
-    } else {
-      stopRecord();
-    }
+      if (!recording) {
+        await startRecord();
+      } else {
+        stopRecord();
+      }
     };
 
     async function startRecord() {
