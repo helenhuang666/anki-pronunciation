@@ -450,8 +450,8 @@
     addDebug("--- 抓取结果 ---", "");
 
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
-    const userIpa = decodeURIComponent(params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
-    const userAudio = decodeURIComponent(params.get("USAudio") || params.get("usaudio") || "");
+    const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
+    const userAudio = decodeURIComponent(params.get("audio") || params.get("USAudio") || params.get("usaudio") || "");
 
     addDebug("单词 (word)", targetWord);
     addDebug("音标 (userIpa)", userIpa || "[未提供]", !userIpa);
