@@ -258,56 +258,7 @@
       box-shadow: 0 4px 12px rgba(58, 102, 184, 0.1);
     }
 
-    /* 调试面板样式 */
-    #debug-panel {
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      width: 350px;
-      max-height: 400px;
-      overflow-y: auto;
-      background: #fff;
-      border: 2px solid #ff6b6b;
-      border-radius: 8px;
-      padding: 12px;
-      font-size: 12px;
-      font-family: monospace;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-      z-index: 9999;
-    }
 
-    #debug-panel h3 {
-      margin: 0 0 10px 0;
-      color: #ff6b6b;
-      font-size: 14px;
-    }
-
-    #debug-panel .debug-item {
-      margin: 5px 0;
-      padding: 5px;
-      background: #f8f9fa;
-      border-left: 3px solid #3A66B8;
-    }
-
-    #debug-panel .debug-label {
-      font-weight: bold;
-      color: #333;
-    }
-
-    #debug-panel .debug-value {
-      color: #0066cc;
-      word-break: break-all;
-    }
-
-    #debug-panel .debug-empty {
-      color: #ff6b6b;
-      font-style: italic;
-    }
-
-    #debug-panel .debug-success {
-      color: #28a745;
-      font-weight: bold;
-    }
 
     .mic-button {
       width: 72px;
@@ -365,11 +316,7 @@
 <body>
 
   <div class="container">
-    <!-- 调试面板 -->
-    <div id="debug-panel">
-      <h3>🔍 调试信息</h3>
-      <div id="debug-content"></div>
-    </div>
+
 
     <!-- Header Word & IPA -->
     <div id="target-word">Apple</div>
@@ -427,20 +374,6 @@
 
     const params = new URLSearchParams(window.location.search);
 
-    // 调试信息收集器
-    const debugInfo = [];
-    function addDebug(label, value, isEmpty = false) {
-      debugInfo.push({ label, value, isEmpty });
-      console.log(`${label}:`, value);
-    }
-
-    addDebug("完整 URL", window.location.href);
-    addDebug("--- 所有 URL 参数 ---", "");
-    for (const [key, value] of params.entries()) {
-      addDebug(`  ${key}`, value);
-    }
-    addDebug("--- 抓取结果 ---", "");
-
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
     let userAudio = decodeURIComponent(params.get("audio") || params.get("audio_file") || params.get("USAudio") || params.get("usaudio") || "");
@@ -456,23 +389,6 @@
         userAudio = audioSrcFilename; // 提取文件名作为最终路径
         logDebug(`从 HTML 标签中提取到音频: ${userAudio}`);
       }
-    }
-
-    addDebug("单词 (word)", targetWord);
-    addDebug("音标 (userIpa)", userIpa || "[未提供]", !userIpa);
-    addDebug("音频原始 (raw)", params.get("audio") || params.get("audio_file") || params.get("USAudio") || params.get("usaudio") || "[未提供]");
-    if (isHtmlTag) addDebug("  → 检测到 HTML 标签并处理", userAudio);
-    addDebug("音频最终 (userAudio)", userAudio || "[未提供]", !userAudio);
-
-    // 渲染调试面板
-    const debugContent = document.getElementById("debug-content");
-    if (debugContent) {
-      debugContent.innerHTML = debugInfo.map(item => `
-        <div class="debug-item">
-          <span class="debug-label">${item.label}:</span>
-          <span class="${item.isEmpty ? 'debug-empty' : 'debug-value'}">${item.value}</span>
-        </div>
-      `).join('');
     }
 
     // 设备识别
