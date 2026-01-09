@@ -884,20 +884,24 @@
       console.log("🔊 点击标准发音按钮");
       console.log("  userAudio:", userAudio || "[未提供]");
 
-      // ===== 🔒 绝对锁定：只播放 Anki 原生音频，绝不合成 =====
+      // 🔊 标准发音逻辑优化：通过 postMessage 请求 Anki 播放
+      // 优先处理用户音频（Anki传入的）
       if (userAudio) {
-        console.log("✅ 播放 Anki 原生音频:", userAudio);
-        const audio = new Audio(userAudio);
-        audio.play().catch(e => {
-          console.error("❌ Anki 音频播放失败:", e);
-          alert("原生音频播放失败: " + e.message);
-        });
-      } else {
-        console.warn("⚠️ 未提供 USAudio 参数，无法播放标准发音");
-        alert("未找到 Anki 音频文件，请检查 USAudio 字段是否正确配置");
-        // ===== 🚫 完全禁用 fallback，绝不合成音频 =====
-        // fallbackStandardPlay(); // 已禁用
+        // 向父窗口 (Anki Card) 发送播放指令
+        window.parent.postMessage({ type: 'PLAY_ANKI_AUDIO', filename: userAudio }, '*');
+
+        // 这里不再尝试 new Audio(userAudio)，因为远程网页无法读取本地文件
+        // 仅在控制台记录，方便调试
+        console.log(`已发送播放请求给 Anki: ${userAudio}`);
+
+        // 视觉反馈
+        stdWordBtn.style.transform = "scale(0.95)";
+        setTimeout(() => stdWordBtn.style.transform = "scale(1)", 150);
+        return;
       }
+
+      // 如果没有用户音频，则回退到 TTS 或其他逻辑 (当前已禁用回退)
+      // fallbackStandardPlay(); // 已禁用
     };
 
     function fallbackStandardPlay() {
