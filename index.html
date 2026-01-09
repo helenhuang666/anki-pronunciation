@@ -443,7 +443,7 @@
 
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
-    let userAudio = decodeURIComponent(params.get("audio") || params.get("USAudio") || params.get("usaudio") || "");
+    let userAudio = decodeURIComponent(params.get("audio") || params.get("audio_file") || params.get("USAudio") || params.get("usaudio") || "");
 
     // ===== 🛠️ 关键修复：解析音频 HTML 标签 =====
     let isHtmlTag = false;
@@ -460,7 +460,7 @@
 
     addDebug("单词 (word)", targetWord);
     addDebug("音标 (userIpa)", userIpa || "[未提供]", !userIpa);
-    addDebug("音频原始 (raw)", params.get("audio") || params.get("USAudio") || params.get("usaudio") || "[未提供]");
+    addDebug("音频原始 (raw)", params.get("audio") || params.get("audio_file") || params.get("USAudio") || params.get("usaudio") || "[未提供]");
     if (isHtmlTag) addDebug("  → 检测到 HTML 标签并处理", userAudio);
     addDebug("音频最终 (userAudio)", userAudio || "[未提供]", !userAudio);
 
