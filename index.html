@@ -8,24 +8,16 @@
   <style>
     /* ===== Global & Layout ===== */
     body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       margin: 0;
       padding: 0;
-      font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: #fff;
-      min-height: 100vh;
-      min-height: 100dvh;
-      height: auto;
+      background-color: #ffffff;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      overflow: visible;
-      -webkit-overflow-scrolling: touch;
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-
-    body.loaded {
-      opacity: 1;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
     }
 
     /* iOS: 字体+5%, Padding-30% */
@@ -451,11 +443,26 @@
 
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
-    const userAudio = decodeURIComponent(params.get("audio") || params.get("USAudio") || params.get("usaudio") || "");
+    let userAudio = decodeURIComponent(params.get("audio") || params.get("USAudio") || params.get("usaudio") || "");
+
+    // ===== 🛠️ 关键修复：解析音频 HTML 标签 =====
+    let isHtmlTag = false;
+    let audioSrcFilename = "";
+    if (userAudio && userAudio.includes("<audio")) {
+      isHtmlTag = true;
+      const srcMatch = userAudio.match(/src=["']([^"']+)["']/);
+      if (srcMatch && srcMatch[1]) {
+        audioSrcFilename = srcMatch[1];
+        userAudio = audioSrcFilename; // 提取文件名作为最终路径
+        logDebug(`从 HTML 标签中提取到音频: ${userAudio}`);
+      }
+    }
 
     addDebug("单词 (word)", targetWord);
     addDebug("音标 (userIpa)", userIpa || "[未提供]", !userIpa);
-    addDebug("音频 (userAudio)", userAudio || "[未提供]", !userAudio);
+    addDebug("音频原始 (raw)", params.get("audio") || params.get("USAudio") || params.get("usaudio") || "[未提供]");
+    if (isHtmlTag) addDebug("  → 检测到 HTML 标签并处理", userAudio);
+    addDebug("音频最终 (userAudio)", userAudio || "[未提供]", !userAudio);
 
     // 渲染调试面板
     const debugContent = document.getElementById("debug-content");
@@ -643,7 +650,7 @@
 
           // 特殊静音组合判定：
           // 1. 词尾不发音 e
-          // 2. 元音后的 gh (如果下一个音素不是 g/h)
+          // 2. 元音后的 gh (如果下一个音素不是 f (laugh) 或 g)
           // 3. 词中被省略的元音 (如 interesting 中的 e)
 
           let remainingPh = pCount - (i + 1);
@@ -843,12 +850,18 @@
       // 适配逻辑：如果是 Android 或 PC 端的 Anki 内嵌环境，执行逃逸跳转
       if (!isIOS && (isWebView || isAnkiPC) && !recording) {
         logDebug("触发环境逃逸跳转 (PC/Android)...");
+        statusLabel.innerText = "正在尝试打开外部浏览器...";
         const externalUrl = window.location.href;
-        try {
-          window.open(externalUrl, "_blank");
-        } catch (e) { }
-        location.href = externalUrl; // 物理逃逸
-        statusLabel.innerText = "请在外部浏览器中操作";
+
+        // 尝试多种逃逸方式
+        const win = window.open(externalUrl, "_blank");
+        if (!win || win.closed || typeof win.closed === 'undefined') {
+          // 如果被拦截，引导用户点击
+          statusLabel.innerHTML = `<a href="${externalUrl}" target="_blank" style="color:#3A66B8;text-decoration:underline;">录音权限受阻，请点击此处并在浏览器中打开</a>`;
+        } else {
+          location.href = externalUrl; // 物理重定向作为兜底
+          statusLabel.innerText = "请在外部浏览器中操作";
+        }
         return;
       }
 
