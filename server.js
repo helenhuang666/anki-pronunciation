@@ -120,15 +120,14 @@ app.post("/assess", upload.single('audio'), async (req, res) => {
     }
 
     const AZURE_KEY = (process.env.AZURE_KEY || "").trim();
-
-    const AZURE_KEY = process.env.AZURE_KEY;
-    const AZURE_REGION = process.env.AZURE_REGION;
+    const AZURE_REGION = (process.env.AZURE_REGION || "").trim();
 
     if (!AZURE_KEY || !AZURE_REGION) {
-      return res.status(500).json({ error: "Azure config missing" });
+      console.error("[ASSESS-SDK] Azure config missing");
+      return res.status(500).json({ success: false, message: "Azure config missing" });
     }
 
-    console.log(`[ASSESS-SDK] Request for '${text}', body size: ${req.body ? req.body.length : 0}`);
+    console.log(`[ASSESS-SDK] Request for '${text}', audio size: ${audioBuffer.length}`);
 
     if (!(req.body instanceof Buffer)) {
       return res.status(400).json({ error: "Body must be a buffer" });
