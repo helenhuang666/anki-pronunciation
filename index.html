@@ -313,24 +313,28 @@
 
     /* 🔥 增强型调试日志台 (仅管理员/调试可见) */
     #debug-log {
-      margin: 10px;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(248, 249, 250, 0.95);
+      border-bottom: 2px solid #3A66B8;
       padding: 8px;
-      background: #f8f9fa;
-      border: 1px dashed #ccc;
-      border-radius: 6px;
       font-family: monospace;
       font-size: 11px;
-      color: #666;
-      max-height: 100px;
+      color: #333;
+      max-height: 120px;
       overflow-y: auto;
-      text-align: left;
+      z-index: 9999;
       display: block;
-      /* 全力开启排障模式 */
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
 
     .log-line {
       border-bottom: 1px solid #eee;
       padding: 2px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
     }
 
     .log-in {
@@ -436,14 +440,17 @@
     const wordEl = document.getElementById("target-word");
     const ipaEl = document.getElementById("target-ipa");
     if (wordEl) wordEl.innerText = targetWord;
-
-    // 强制立即显示音标，不做任何正则替换，保留所有原始符号
-    if (ipaEl && userIpa) {
-      console.log("✅ 正在显示 USPhonetic:", userIpa);
-      ipaEl.innerText = (userIpa.startsWith('/') || userIpa.startsWith('[')) ? userIpa : `/${userIpa}/`;
-      ipaEl.style.color = "#3A66B8";
-    } else {
-      console.warn("⚠️ 音标未能显示。userIpa =", userIpa, "ipaEl =", ipaEl);
+    // 修复：确保初始化时不产生双斜杠
+    if (ipaEl) {
+      if (userIpa) {
+        const cleanIpa = userIpa.replace(/^[\/\s]+|[\/\s]+$/g, '');
+        ipaEl.innerText = `/${cleanIpa}/`;
+        ipaEl.style.color = "#3A66B8";
+        console.log("✅ 正在显示 USPhonetic:", userIpa);
+      } else {
+        ipaEl.innerText = "";
+        console.warn("⚠️ 音标未能显示。userIpa =", userIpa, "ipaEl =", ipaEl);
+      }
     }
 
     // ===== 音标工具：Arpabet 强制转标准 IPA =====
@@ -682,8 +689,9 @@
       console.log("[DATA] Azure raw phonemes:", targetPhonemes);
 
       // 只有在用户完全没提供音标参数时，才使用 Azure 合成的音标
-      if (!userIpa && ipaEl && (!ipaEl.innerText || ipaEl.innerText === "//" || ipaEl.innerText === "")) {
-        ipaEl.innerText = `/${displayPhonemesList.join(' ')}/`;
+      if (!ipaEl || !ipaEl.innerText || ipaEl.innerText === "//" || ipaEl.innerText === "") {
+        const cleanList = displayPhonemesList.map(p => p.replace(/[\/]/g, ''));
+        ipaEl.innerText = `/${cleanList.join(' ')}/`;
       }
 
       try {
