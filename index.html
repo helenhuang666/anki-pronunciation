@@ -443,13 +443,12 @@
     // 修复：确保初始化时不产生双斜杠
     if (ipaEl) {
       if (userIpa) {
-        const cleanIpa = userIpa.replace(/^[\/\s]+|[\/\s]+$/g, '');
-        ipaEl.innerText = `/${cleanIpa}/`;
+        // 强力去重：移除所有已有的斜杠和括号，重新统一包裹
+        const pureIpa = userIpa.replace(/[\/\[\]\s]+/g, ' ').trim();
+        ipaEl.innerText = `/${pureIpa}/`;
         ipaEl.style.color = "#3A66B8";
-        console.log("✅ 正在显示 USPhonetic:", userIpa);
       } else {
         ipaEl.innerText = "";
-        console.warn("⚠️ 音标未能显示。userIpa =", userIpa, "ipaEl =", ipaEl);
       }
     }
 
@@ -669,6 +668,7 @@
     /* ===== Render UI ===== */
     function renderResult(nbest) {
       scoreHeader.style.opacity = "1";
+      barsContainer.style.display = "flex";
       const acc = Math.round(nbest.PronunciationAssessment.AccuracyScore || 0);
       mainScoreEl.innerHTML = `${acc}<span class="score-unit">分</span>`;
 
@@ -689,8 +689,7 @@
       console.log("[DATA] Azure raw phonemes:", targetPhonemes);
 
       // 只有在用户完全没提供音标参数时，才使用 Azure 合成的音标
-      if (!ipaEl || !ipaEl.innerText || ipaEl.innerText === "//" || ipaEl.innerText === "") {
-        // 全力防止双斜杠：只在首尾加，中间空格分隔
+      if (!ipaEl.innerText || ipaEl.innerText === "//" || ipaEl.innerText === "") {
         const cleanList = displayPhonemesList.map(p => p.replace(/[\/\[\]\s]+/g, ''));
         ipaEl.innerText = `/${cleanList.join(' ')}/`;
       }
@@ -987,15 +986,10 @@
 
         if (msg.type === 'ASSESSMENT_RESULT') {
           const rawData = msg.payload;
-          logToScreen(`评分数据已达, 分数: ${rawData ? rawData.pronunciation : 'N/A'}`);
-          console.log("📩 收到 Anki 测评数据:", JSON.stringify(rawData));
-
-          // 适配器：将用户后端简化数据转换为 renderResult 需要的 Azure 结构
-          // 用户数据: { pronunciation: 95, phonemes: [{Phoneme:'t', AccuracyScore:100}, ...] }
-          // 目标结构: { PronunciationAssessment: {AccuracyScore...}, Words: [{Phonemes: [...]}] }
+          logToScreen(`评分数据已达: ${rawData ? rawData.pronunciation : 'N/A'}`);
 
           if (!rawData || !rawData.phonemes) {
-            console.error("数据格式错误: 缺少 phonemes");
+            logToScreen("❌ 消息格式错误", "err");
             return;
           }
 
