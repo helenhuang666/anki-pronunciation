@@ -5,6 +5,9 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import sdk from "microsoft-cognitiveservices-speech-sdk";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -19,11 +22,7 @@ app.use(cors());
 // 首先解析 JSON，因为 TTS 需要
 app.use(express.json());
 
-// 仅在 /assess 路径下解析 raw body (WAV 录音)，避免干扰其他接口的 JSON 解析
-app.use("/assess", express.raw({
-  type: "*/*",
-  limit: "10mb"
-}));
+// 原有的 express.raw 已被替换为 multer 中间件处理具体的上传接口
 
 app.use(express.static(__dirname));
 
@@ -105,13 +104,22 @@ app.post("/tts", async (req, res) => {
 });
 
 // ===== 发音测评接口 =====
-app.post("/assess", async (req, res) => {
+app.post("/assess", upload.single('audio'), async (req, res) => {
   let recognizer = null;
   try {
-    const text = req.query.text;
+    const text = (req.body && req.body.word) || req.query.text;
     if (!text) {
-      return res.status(400).json({ error: "Missing text" });
+      console.error("[ASSESS-SDK] Text missing in both body and query");
+      return res.status(400).json({ success: false, message: "Missing word/text" });
     }
+
+    const audioBuffer = req.file ? req.file.buffer : null;
+    if (!audioBuffer) {
+      console.error("[ASSESS-SDK] Audio file missing in request");
+      return res.status(400).json({ success: false, message: "Audio file missing" });
+    }
+
+    const AZURE_KEY = (process.env.AZURE_KEY || "").trim();
 
     const AZURE_KEY = process.env.AZURE_KEY;
     const AZURE_REGION = process.env.AZURE_REGION;
@@ -131,10 +139,10 @@ app.post("/assess", async (req, res) => {
     const pushStream = sdk.AudioInputStream.createPushStream(format);
 
     // 跳过 WAV 文件头（44字节），直接写入数据，确保评估的是纯 PCM
-    if (req.body.length > 44) {
-      pushStream.write(req.body.slice(44));
+    if (audioBuffer.length > 44) {
+      pushStream.write(audioBuffer.slice(44));
     } else {
-      pushStream.write(req.body);
+      pushStream.write(audioBuffer);
     }
     pushStream.close();
 
