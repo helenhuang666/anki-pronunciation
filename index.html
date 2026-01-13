@@ -690,7 +690,8 @@
 
       // 只有在用户完全没提供音标参数时，才使用 Azure 合成的音标
       if (!ipaEl || !ipaEl.innerText || ipaEl.innerText === "//" || ipaEl.innerText === "") {
-        const cleanList = displayPhonemesList.map(p => p.replace(/[\/]/g, ''));
+        // 全力防止双斜杠：只在首尾加，中间空格分隔
+        const cleanList = displayPhonemesList.map(p => p.replace(/[\/\[\]\s]+/g, ''));
         ipaEl.innerText = `/${cleanList.join(' ')}/`;
       }
 
@@ -986,8 +987,8 @@
 
         if (msg.type === 'ASSESSMENT_RESULT') {
           const rawData = msg.payload;
-          logToScreen(`评分结果已达, 分数: ${rawData ? rawData.pronunciation : 'N/A'}`);
-          console.log("📩 收到 Anki 测评数据:", rawData);
+          logToScreen(`评分数据已达, 分数: ${rawData ? rawData.pronunciation : 'N/A'}`);
+          console.log("📩 收到 Anki 测评数据:", JSON.stringify(rawData));
 
           // 适配器：将用户后端简化数据转换为 renderResult 需要的 Azure 结构
           // 用户数据: { pronunciation: 95, phonemes: [{Phoneme:'t', AccuracyScore:100}, ...] }
