@@ -105,6 +105,10 @@ app.post("/tts", async (req, res) => {
 
 // ===== 发音测评接口 =====
 app.post("/assess", upload.single('audio'), async (req, res) => {
+  // 1. 顶级日志：确认请求是否到达
+  console.info(`>>> [REQUEST-ENTRY] ${new Date().toISOString()} | IP: ${req.ip} | Word: ${req.body ? req.body.word : 'N/A'}`);
+  console.info(`>>> [HEADERS] type: ${req.headers['content-type']}, length: ${req.headers['content-length']}`);
+
   let recognizer = null;
   try {
     const text = (req.body && req.body.word) || req.query.text;
@@ -112,6 +116,7 @@ app.post("/assess", upload.single('audio'), async (req, res) => {
       console.error("[ASSESS-SDK] Text missing in both body and query");
       return res.status(400).json({ success: false, message: "Missing word/text" });
     }
+
 
     const audioBuffer = req.file ? req.file.buffer : null;
     if (!audioBuffer) {
@@ -131,8 +136,10 @@ app.post("/assess", upload.single('audio'), async (req, res) => {
     const format = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
     const pushStream = sdk.AudioInputStream.createPushStream(format);
 
+    // 打印 Buffer 探测
+    console.debug(`[ASSESS-DEBUG] AudioBuffer size: ${audioBuffer.length} bytes`);
+
     // 跳过 WAV 文件头（44字节），直接写入 PCM 数据
-    // 注意：如果音频质量不佳，这里可能需要根据实际采样率判断
     if (audioBuffer.length > 44) {
       pushStream.write(audioBuffer.slice(44));
     } else {
