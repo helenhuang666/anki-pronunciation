@@ -127,17 +127,12 @@ app.post("/assess", upload.single('audio'), async (req, res) => {
       return res.status(500).json({ success: false, message: "Azure config missing" });
     }
 
-    console.log(`[ASSESS-SDK] Request for '${text}', audio size: ${audioBuffer.length}`);
-
-    if (!(req.body instanceof Buffer)) {
-      return res.status(400).json({ error: "Body must be a buffer" });
-    }
-
-    // 1. Setup Audio Stream (Explicitly define format for PCM 16k 16bit Mono)
+    // 3. 将音频推送到 Azure Stream
     const format = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
     const pushStream = sdk.AudioInputStream.createPushStream(format);
 
-    // 跳过 WAV 文件头（44字节），直接写入数据，确保评估的是纯 PCM
+    // 跳过 WAV 文件头（44字节），直接写入 PCM 数据
+    // 注意：如果音频质量不佳，这里可能需要根据实际采样率判断
     if (audioBuffer.length > 44) {
       pushStream.write(audioBuffer.slice(44));
     } else {
@@ -179,9 +174,11 @@ app.post("/assess", upload.single('audio'), async (req, res) => {
         }
 
         if (!jsonStr) {
-          return res.json({
-            RecognitionStatus: result.reason === sdk.ResultReason.RecognizedSpeech ? "Success" : (result.errorDetails || "NoMatch"),
-            NBest: []
+          console.warn("[ASSESS-SDK] No JSON string in response. Reason:", result.reason);
+          return res.status(400).json({
+            success: false,
+            message: "No recognition match found. Please try again.",
+            status: result.reason
           });
         }
 
