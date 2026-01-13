@@ -922,182 +922,144 @@
       return new Blob([buffer], { type: 'audio/wav' });
     }
 
-    stdWordBtn.onclick = () => {
-      console.log("🔊 点击标准发音按钮");
-      console.log("  userAudio:", userAudio || "[未提供]");
+    // 🎤 环境识别与全局状态
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isAnkiPC = /QtWebEngine/i.test(navigator.userAgent);
+    const params = new URLSearchParams(window.location.search);
+    const isExternalControl = params.get('ext_record') === '1';
 
-      // 🔊 标准发音逻辑优化：通过 postMessage 请求 Anki 播放
-      stdWordBtn.onclick = () => {
-        // 1. 优先处理 userAudio (来自 Anki 参数)
-        if (userAudio) {
-          window.parent.postMessage({ type: 'PLAY_ANKI_AUDIO', filename: userAudio }, '*');
+    function logToScreen(msg, type = '') {
+      const logEl = document.getElementById('debug-log');
+      if (!logEl) return;
+      const line = document.createElement('div');
+      line.className = 'log-line' + (type ? ' log-' + type : '');
+      line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
 
-          // 视觉反馈
-          stdWordBtn.style.transform = "scale(0.95)";
-          setTimeout(() => stdWordBtn.style.transform = "scale(1)", 150);
+    if (isExternalControl) {
+      if (recordBtn) recordBtn.style.display = 'none';
+      if (statusText) statusText.innerText = "等待 Anki 录音...";
+    }
+
+    // 👂 全局消息监听器
+    window.addEventListener('message', event => {
+      const msg = event.data;
+      if (!msg || !msg.type) return;
+
+      logToScreen(`收到消息: ${msg.type}`, 'in');
+
+      if (msg.type === 'ASSESSMENT_STATUS') {
+        logToScreen(`状态: ${msg.status}`);
+        if (statusText) statusText.innerText = msg.status;
+      }
+
+      if (msg.type === 'ASSESSMENT_RESULT') {
+        const rawData = msg.payload;
+        if (!rawData || !rawData.phonemes) {
+          logToScreen("❌ 数据格式错误", "err");
           return;
         }
-        // 2. 否则不做处理 (已禁用 Fallback)
-      };
 
-      // 🎤 录音环境识别
-      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-      const isAnkiPC = /QtWebEngine/i.test(navigator.userAgent);
-      const params = new URLSearchParams(window.location.search);
-      const isExternalControl = params.get('ext_record') === '1'; // 新增：识别外部录音模式
+        logToScreen(`评分已达: ${rawData.pronunciation}`);
 
-      if (isExternalControl) {
-        if (recordBtn) recordBtn.style.display = 'none';
-        if (statusText) statusText.innerText = "等待 Anki 发起录音...";
+        const adaptedData = {
+          PronunciationAssessment: { AccuracyScore: rawData.pronunciation },
+          Words: [{
+            Phonemes: rawData.phonemes.map(p => ({
+              Phoneme: p.Phoneme,
+              PronunciationAssessment: { AccuracyScore: p.AccuracyScore }
+            }))
+          }]
+        };
+
+        renderResult(adaptedData);
+        if (statusText) statusText.innerText = "测评完成";
       }
 
-      function logToScreen(msg, type = '') {
-        const logEl = document.getElementById('debug-log');
-        if (!logEl) return;
-        const line = document.createElement('div');
-        line.className = 'log-line' + (type ? ' log-' + type : '');
-        line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-        logEl.appendChild(line);
-        logEl.scrollTop = logEl.scrollHeight;
+      if (msg.type === 'PLAY_ANKI_AUDIO') {
+        // iframe 被迫模式下，此逻辑在 Parent 端执行
       }
+    });
 
-      /**
-       * 👂 核心重构：监听来自 Anki (Parent) 的消息
-  
-       * 支持两种消息：
-       * 1. ASSESSMENT_RESULT: 接收外部测评结果并渲染
-       * 2. SYNC_STATUS: 同步录音状态 (可选)
-       */
-      window.addEventListener('message', event => {
-        const msg = event.data;
-        if (!msg || !msg.type) return;
-
-        logToScreen(`收到消息: ${msg.type}`, 'in');
-
-        if (msg.type === 'ASSESSMENT_STATUS') {
-          logToScreen(`状态更新: ${msg.status}`);
-          if (statusText) statusText.innerText = msg.status;
-          if (msg.recording) {
-            container.classList.add('recording-active');
-          } else {
-            container.classList.remove('recording-active');
-          }
-        }
-
-        if (msg.type === 'ASSESSMENT_RESULT') {
-          const rawData = msg.payload;
-          logToScreen(`评分数据已达: ${rawData ? rawData.pronunciation : 'N/A'}`);
-
-          if (!rawData || !rawData.phonemes) {
-            logToScreen("❌ 消息格式错误", "err");
-            return;
-          }
-
-          const adaptedData = {
-            PronunciationAssessment: {
-              AccuracyScore: rawData.pronunciation
-            },
-            Words: [{
-              Phonemes: rawData.phonemes.map(p => ({
-                Phoneme: p.Phoneme,
-                PronunciationAssessment: {
-                  AccuracyScore: p.AccuracyScore
-                }
-              }))
-            }]
-          };
-
-          // 调用现有渲染引擎
-          renderResult(adaptedData);
-
-          // 隐藏录音按钮 (因为录音现在由 Anki 接管，网页端按钮变更为纯状态显示或隐藏)
-          // 实际上，为了保持 UI 一致性，我们可以让网页端的录音按钮变灰，或者直接忽略。
-          // 但根据用户描述 "Anki负责录音"，网页端最好不再显示可点击的录音按钮。
-          if (recordBtn) {
-            recordBtn.style.display = 'none'; // 隐藏内部录音按钮
-            micIcon.style.display = 'none';   // 隐藏麦克风图标
-          }
-
-          // 更新状态文字
-          if (statusText) statusText.innerText = "测评完成";
-        }
-      });
-
-      function fallbackStandardPlay() {
-        // 播放整词的标准发音，如果 IPA 未就绪则回退到纯文本发音
-        const currentIpa = ipaEl ? ipaEl.innerText.replace(/\//g, '').trim() : "";
-        if (currentIpa) {
-          playPhoneme(currentIpa, targetWord);
-        } else {
-          // 纯文本发音作为兜底 (不带音素偏移)
-          playStandardText(targetWord);
-        }
+    // 按钮事件绑定
+    stdWordBtn.onclick = () => {
+      if (userAudio) {
+        window.parent.postMessage({ type: 'PLAY_ANKI_AUDIO', filename: userAudio }, '*');
+        stdWordBtn.style.transform = "scale(0.95)";
+        setTimeout(() => stdWordBtn.style.transform = "scale(1)", 150);
+      } else {
+        fallbackStandardPlay();
       }
+    };
 
-      async function playStandardText(text) {
-        try {
-          const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+    playbackBtn.onclick = () => {
+      if (lastRecordedBlob) {
+        const audio = new Audio(URL.createObjectURL(lastRecordedBlob));
+        audio.play().catch(e => {
+          logToScreen(`回放失败: ${e.message}`, "err");
+        });
+      }
+    };
+
+    function fallbackStandardPlay() {
+      const currentIpa = ipaEl ? ipaEl.innerText.replace(/[\/\[\]\s]+/g, '').trim() : "";
+      if (currentIpa) {
+        playPhoneme(currentIpa, targetWord);
+      } else {
+        playStandardText(targetWord);
+      }
+    }
+
+    async function playStandardText(text) {
+      try {
+        const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
           <voice name="en-US-ChristopherNeural">
             <prosody volume="+30.00%">${text}</prosody>
           </voice>
         </speak>`;
-          const res = await fetch(window.location.origin + "/tts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ssml })
-          });
-          if (res.ok) {
-            const blob = await res.blob();
-            const audio = new Audio(URL.createObjectURL(blob));
-            audio.play();
-          }
-        } catch (e) { console.error("Standard TTS Error", e); }
-      }
-
-      playbackBtn.onclick = () => {
-        if (lastRecordedBlob) {
-          logDebug("请求录音回放...");
-          const audio = new Audio(URL.createObjectURL(lastRecordedBlob));
-          audio.play().catch(e => {
-            logDebug(`回放失败: ${e.message}`, "err");
-            alert("请先点击页面任意处以解除浏览器静音限制");
-          });
+        const res = await fetch(window.location.origin + "/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ssml })
+        });
+        if (res.ok) {
+          const blob = await res.blob();
+          const audio = new Audio(URL.createObjectURL(blob));
+          audio.play();
         }
-      };
-
-      async function sendCheck(blob) {
-        const startTime = Date.now();
-        logDebug(`发起评分请求: /assess?text=${encodeURIComponent(targetWord)}`);
-        try {
-          const res = await fetch(`/assess?text=${encodeURIComponent(targetWord)}`, {
-            method: "POST",
-            body: blob
-          });
-          logDebug(`云端响应时间: ${Date.now() - startTime}ms`);
-          logDebug(`后端响应码: ${res.status}`);
-          const data = await res.json();
-
-          if (data.NBest && data.NBest.length > 0) {
-            logDebug("评分成功接收", "ok");
-            statusLabel.innerText = "测评完成";
-            renderResult(data.NBest[0]);
-          } else {
-            logDebug(`评分结果异常: ${data.RecognitionStatus}`, "err");
-            statusLabel.innerText = "未识别到语音";
-          }
-        } catch (e) {
-          logDebug(`上传失败: ${e.message}`, "err");
-          statusLabel.innerText = "网络请求失败";
-        }
+      } catch (e) {
+        console.error("Standard TTS Error", e);
       }
+    }
 
-      function writeString(view, offset, string) {
-        for (let i = 0; i < string.length; i++) {
-          view.setUint8(offset + i, string.charCodeAt(i));
+    async function sendCheck(blob) {
+      const startTime = Date.now();
+      logDebug(`发起请求: /assess?text=${encodeURIComponent(targetWord)}`);
+      try {
+        const res = await fetch(`/assess?text=${encodeURIComponent(targetWord)}`, {
+          method: "POST",
+          body: blob
+        });
+        const data = await res.json();
+        if (data.NBest && data.NBest.length > 0) {
+          logDebug("成功");
+          statusLabel.innerText = "测评完成";
+          renderResult(data.NBest[0]);
         }
+      } catch (e) {
+        logDebug(`失败: ${e.message}`, "err");
       }
+    }
 
-      logDebug("主逻辑已绑定，准备就绪", "ok");
+    function writeString(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+
+    logDebug("主逻辑已绑定，排障模式就绪", "ok");
   </script>
 </body>
 
