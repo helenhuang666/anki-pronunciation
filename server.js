@@ -168,7 +168,7 @@ app.post("/assess", async (req, res) => {
         if (result.reason === sdk.ResultReason.Canceled) {
           const cancellation = sdk.CancellationDetails.fromResult(result);
           console.error(`[ASSESS-SDK] CANCELED: ${cancellation.reason}, ErrorDetails: ${cancellation.errorDetails}`);
-          return res.status(500).json({ error: cancellation.errorDetails, reason: cancellation.reason });
+          return res.status(500).json({ success: false, message: cancellation.errorDetails || "Recognition canceled" });
         }
 
         if (!jsonStr) {
@@ -180,10 +180,33 @@ app.post("/assess", async (req, res) => {
 
         try {
           const json = JSON.parse(jsonStr);
-          res.json(json);
+
+          // --- 数据适配逻辑 ---
+          // 提取 AccuracyScore
+          const nBest = json.NBest && json.NBest[0];
+          const pronunciationScore = nBest ? nBest.PronunciationAssessment.AccuracyScore : 0;
+
+          // 提取 Phonemes (IPA 格式)
+          const words = nBest && nBest.Words;
+          const firstWord = words && words[0];
+          const phonemes = (firstWord && firstWord.Phonemes) ? firstWord.Phonemes : [];
+
+          // 打印转换后的数据概览
+          console.log(`[ASSESS-SUCCESS] Score: ${pronunciationScore}, Phonemes count: ${phonemes.length}`);
+
+          // 返回前端期待的格式
+          res.json({
+            success: true,
+            pronunciation: pronunciationScore,
+            phonemes: phonemes.map(p => ({
+              Phoneme: p.Phoneme,
+              AccuracyScore: p.PronunciationAssessment.AccuracyScore
+            }))
+          });
+
         } catch (e) {
-          console.error("[ASSESS-SDK] JSON Parse Failed", e);
-          res.status(500).json({ error: "Invalid JSON from SDK" });
+          console.error("[ASSESS-SDK] JSON Parse/Adapt Failed", e);
+          res.status(500).json({ success: false, message: "Invalid data structure from Azure" });
         }
 
         recognizer.close();
@@ -191,7 +214,7 @@ app.post("/assess", async (req, res) => {
       },
       (err) => {
         console.error("[ASSESS-SDK] Error: " + err);
-        res.status(500).json({ error: "SDK Error: " + err });
+        res.status(500).json({ success: false, message: "SDK Internal Error: " + err });
         if (recognizer) {
           recognizer.close();
           recognizer = null;
