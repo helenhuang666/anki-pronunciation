@@ -317,19 +317,23 @@
       top: 0;
       left: 0;
       right: 0;
-      background: #fff;
-      border: 3px solid #ff5252;
-      /* 鲜红色边框确保看见 */
-      padding: 10px;
-      font-family: monospace;
-      font-size: 13px;
-      line-height: 1.4;
-      color: #000;
-      max-height: 200px;
+      background: #ffffff !important;
+      /* 强制纯白不透明 */
+      border: 4px solid #ff5252 !important;
+      /* 鲜艳粗红边框 */
+      padding: 12px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #d32f2f;
+      /* 深红色字体 */
+      max-height: 250px;
       overflow-y: auto;
-      z-index: 99999;
-      display: block;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      z-index: 2147483647 !important;
+      /* 绝对置顶 */
+      display: block !important;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      font-weight: bold;
     }
 
     .log-line {
@@ -412,7 +416,18 @@
     }
 
     // 初始化自检
-    logToScreen("🚀 网页内核就绪, URL: " + location.search.substring(0, 50) + "...");
+    logToScreen("🚀 调试终端激活...");
+    logToScreen("📍 当前源: " + window.location.origin);
+    logToScreen("📜 参数: " + location.search.substring(0, 100));
+
+    // 握手信号：告诉父窗口，我准备好了！
+    function signalReady() {
+      logToScreen("📡 发送 IFRAME_READY 握手...");
+      window.parent.postMessage({ type: 'IFRAME_READY' }, '*');
+    }
+
+    // 延迟 300ms 确保脚本解析完
+    signalReady();
 
     function logDebug(msg) { console.log(msg); }
 
@@ -961,9 +976,12 @@
     // 👂 全局消息监听器
     window.addEventListener('message', event => {
       const msg = event.data;
-      if (!msg || !msg.type) return;
+      if (!msg || !msg.type) {
+        logToScreen("❓ 收到未知格式消息: " + JSON.stringify(msg));
+        return;
+      }
 
-      logToScreen(`收到消息: ${msg.type}`, 'in');
+      logToScreen(`🔔 PING! 收到消息 [${msg.type}]`, 'in');
 
       if (msg.type === 'ASSESSMENT_STATUS') {
         logToScreen(`状态: ${msg.status}`);
