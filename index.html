@@ -953,19 +953,9 @@
 
     // 🎤 环境识别与全局状态 (已提升至顶部)
 
-    function logToScreen(msg, type = '') {
-      const logEl = document.getElementById('debug-log');
-      if (!logEl) return;
-      const line = document.createElement('div');
-      line.className = 'log-line' + (type ? ' log-' + type : '');
-      line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      logEl.appendChild(line);
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-
     if (isExternalControl) {
       if (recordBtn) recordBtn.style.display = 'none';
-      if (statusText) statusText.innerText = "等待 Anki 录音...";
+      if (statusLabel) statusLabel.innerText = "等待 Anki 录音...";
     }
 
     // 👂 全局消息监听器
