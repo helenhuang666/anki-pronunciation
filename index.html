@@ -441,6 +441,13 @@
     }).catch(e => logToScreen("❌ 提示库加载失败", "err"));
 
     const params = new URLSearchParams(window.location.search);
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isAnkiPC = /QtWebEngine/i.test(navigator.userAgent);
+    const isExternalControl = params.get('ext_record') === '1';
+
+    if (isIOS) document.body.classList.add("ios-mode");
+    if (isAnkiPC) document.body.classList.add("pc-mode");
+    document.body.classList.add("loaded");
 
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
@@ -455,16 +462,8 @@
       if (srcMatch && srcMatch[1]) {
         audioSrcFilename = srcMatch[1];
         userAudio = audioSrcFilename; // 提取文件名作为最终路径
-        logDebug(`从 HTML 标签中提取到音频: ${userAudio}`);
       }
     }
-
-    // 设备识别
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    const isAnkiPC = /QtWebEngine/i.test(navigator.userAgent);
-    if (isIOS) document.body.classList.add("ios-mode");
-    if (isAnkiPC) document.body.classList.add("pc-mode");
-    document.body.classList.add("loaded");
 
     // 立即显示单词
     const wordEl = document.getElementById("target-word");
@@ -952,11 +951,7 @@
       return new Blob([buffer], { type: 'audio/wav' });
     }
 
-    // 🎤 环境识别与全局状态
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const isAnkiPC = /QtWebEngine/i.test(navigator.userAgent);
-    const params = new URLSearchParams(window.location.search);
-    const isExternalControl = params.get('ext_record') === '1';
+    // 🎤 环境识别与全局状态 (已提升至顶部)
 
     function logToScreen(msg, type = '') {
       const logEl = document.getElementById('debug-log');
