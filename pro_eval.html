@@ -358,8 +358,15 @@
 
   <script>
     // ===== 顶级调试工具 =====
+    const debugLogEl = document.getElementById("debug-log");
     function logToScreen(msg, type = '') {
-      // 日志功能已禁用
+      if (!debugLogEl) return;
+      const div = document.createElement("div");
+      div.style.cssText = "margin-bottom:4px; font-family:monospace; font-size:11px; color:#444;";
+      if (type === 'err') div.style.color = "red";
+      if (type === 'ok') div.style.color = "green";
+      div.innerText = `> ${msg}`;
+      debugLogEl.prepend(div);
     }
 
     // 初始化自检
@@ -428,6 +435,16 @@
     if (isIOS) document.body.classList.add("ios-mode");
     if (isAnkiPC) document.body.classList.add("pc-mode");
     document.body.classList.add("loaded");
+
+    // V64: 允许调试日志在 Android/PC 显示
+    if (!isIOS && debugLogEl) {
+      debugLogEl.style.display = "block";
+      debugLogEl.style.maxHeight = "150px";
+      debugLogEl.style.overflowY = "auto";
+      debugLogEl.style.background = "#fff";
+      debugLogEl.style.border = "1px solid #ddd";
+      debugLogEl.style.padding = "5px";
+    }
 
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
@@ -822,14 +839,20 @@
       recordBtn.onclick = async () => {
         // 适配逻辑：如果是 Android 或 PC 端的 Anki 内嵌环境，执行逃逸跳转
         if (!isIOS && (isWebView || isAnkiPC) && !recording) {
-          logDebug("检测到嵌入式环境 (Android/PC)... 仍尝试进行本地录制");
-          // 移除温和提示，直接尝试录制，如果失败再跳转
+          logToScreen("检测到 Anki 环境 (Android/PC)... 开启本地权限请求环节");
           try {
             await startRecord();
             return;
           } catch (e) {
-            logDebug("本地录制初始化失败，引导跳转浏览器...");
-            statusLabel.innerHTML = `<a href="${window.location.href}" target="_blank" style="color:#3A66B8;text-decoration:underline;background:#eee;padding:10px;border-radius:5px;display:block;margin:10px;">录音受限，请点此在浏览器中评测</a>`;
+            logToScreen("🚫 硬件权限失败: " + e.message, "err");
+            const finalUrl = window.location.href;
+            statusLabel.innerHTML = `
+               <div style="background:#fff9e6; border:2px solid #ffcc00; padding:15px; border-radius:10px; margin:10px 0; box-shadow:0 4px 8px rgba(0,0,0,0.1);">
+                 <p style="color:#856404; font-weight:bold; margin:0 0 10px 0; font-size:14px;">⚠️ Anki 麦克风受阻</p>
+                 <a href="${finalUrl}" target="_blank" style="background:#ffcc00; color:#000; padding:12px 20px; text-decoration:none; display:inline-block; border-radius:8px; font-weight:bold; font-size:16px;">点此打开外部浏览器评测</a>
+                 <div style="font-size:11px; color:#856404; margin-top:8px;">(报错信息: ${e.message})</div>
+               </div>
+            `;
             return;
           }
         }
