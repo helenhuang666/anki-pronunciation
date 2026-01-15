@@ -383,8 +383,8 @@
   </div>
 
   <!-- Bottom Controls -->
-  <div class="controls">
-    <div class="btn-row">
+  <div class="controls" id="controls-section">
+    <div class="btn-row" id="recording-controls">
       <!-- 标准发音按钮 (左) -->
       <button id="stdWordBtn" class="playback-btn" style="background:#3A66B8;">标准发音</button>
 
@@ -444,6 +444,19 @@
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isAnkiPC = /QtWebEngine/i.test(navigator.userAgent);
     const isExternalControl = params.get('ext_record') === '1';
+
+    // 🔥 外部录音模式：隐藏所有录音控件
+    if (isExternalControl) {
+      logToScreen("🎯 外部录音模式启用，禁用本地录音功能");
+      const recordingControls = document.getElementById('recording-controls');
+      const statusEl = document.getElementById('status');
+      if (recordingControls) recordingControls.style.display = 'none';
+      if (statusEl) statusEl.style.display = 'none';
+
+      // 禁用调试日志（生产环境）
+      const debugLog = document.getElementById('debug-log');
+      if (debugLog) debugLog.style.display = 'none';
+    }
 
     if (isIOS) document.body.classList.add("ios-mode");
     if (isAnkiPC) document.body.classList.add("pc-mode");
@@ -833,32 +846,34 @@
     // 适配 PC 端 Anki: 强化识别
     const isWebView = /Anki|WebView|Android.*(wv|.0.0.0)|QtWebEngine/i.test(navigator.userAgent);
 
-    recordBtn.onclick = async () => {
-      // 适配逻辑：如果是 Android 或 PC 端的 Anki 内嵌环境，执行逃逸跳转
-      if (!isIOS && (isWebView || isAnkiPC) && !recording) {
-        logDebug("触发环境逃逸跳转 (PC/Android)...");
-        statusLabel.innerText = "正在尝试打开外部浏览器...";
-        const externalUrl = window.location.href;
+    // 🔥 外部录音模式：完全禁用录音按钮
+    if (!isExternalControl && recordBtn) {
+      recordBtn.onclick = async () => {
+        // 适配逻辑：如果是 Android 或 PC 端的 Anki 内嵌环境，执行逃逸跳转
+        if (!isIOS && (isWebView || isAnkiPC) && !recording) {
+          logDebug("触发环境逃逸跳转 (PC/Android)...");
+          statusLabel.innerText = "正在尝试打开外部浏览器...";
+          const externalUrl = window.location.href;
 
-        // 尝试多种逃逸方式
-        const win = window.open(externalUrl, "_blank");
-        if (!win || win.closed || typeof win.closed === 'undefined') {
-          // 如果被拦截，引导用户点击
-          statusLabel.innerHTML = `<a href="${externalUrl}" target="_blank" style="color:#3A66B8;text-decoration:underline;">录音权限受阻，请点击此处并在浏览器中打开</a>`;
-        } else {
-          location.href = externalUrl; // 物理重定向作为兜底
-          statusLabel.innerText = "请在外部浏览器中操作";
+          // 尝试多种逃逸方式
+          const win = window.open(externalUrl, "_blank");
+          if (!win || win.closed || typeof win.closed === 'undefined') {
+            // 如果被拦截，引导用户点击
+            statusLabel.innerHTML = `<a href="${externalUrl}" target="_blank" style="color:#3A66B8;text-decoration:underline;">录音权限受阻，请点击此处并在浏览器中打开</a>`;
+          } else {
+            location.href = externalUrl; // 物理重定向作为兜底
+            statusLabel.innerText = "请在外部浏览器中操作";
+          }
+          return;
         }
-        return;
-      }
 
-      if (!recording) {
-        await startRecord();
-      } else {
-        stopRecord();
-      }
-    };
-
+        if (!recording) {
+          await startRecord();
+        } else {
+          stopRecord();
+        }
+      };
+    }
     async function startRecord() {
       logDebug("正在请求麦克风 (16kHz PCM 直接采样)...");
       try {
@@ -963,43 +978,73 @@
       const msg = event.data;
       if (!msg || !msg.type) {
         logToScreen("❓ 收到未知格式消息: " + JSON.stringify(msg));
-        return;
-      }
+        if (!msg || !msg.type) return;
 
-      logToScreen(`🔔 PING! 收到消息 [${msg.type}]`, 'in');
+        logToScreen(`📨 收到消息: ${msg.type}`);
 
-      if (msg.type === 'ASSESSMENT_STATUS') {
-        logToScreen(`状态: ${msg.status}`);
-        if (statusText) statusText.innerText = msg.status;
-      }
+        // 1. 接收评测结果 (从 Anki 发送)
+        if (msg.type === 'ASSESSMENT_RESULT') {
+          logToScreen("✅ 收到评测结果，正在渲染...", "in");
+          const payload = msg.payload;
 
-      if (msg.type === 'ASSESSMENT_RESULT') {
-        const rawData = msg.payload;
-        if (!rawData || !rawData.phonemes) {
-          logToScreen("❌ 数据格式错误", "err");
-          return;
+          if (!payload) {
+            logToScreen("❌ 评测结果为空", "err");
+            return;
+          }
+
+          // 检查数据结构并适配
+          let adaptedData;
+          if (payload.nbest) {
+            // Azure完整格式
+            adaptedData = payload.nbest;
+          } else if (payload.PronunciationAssessment && payload.Words) {
+            // 简化格式
+            adaptedData = payload;
+          } else {
+            logToScreen("⚠️ 数据格式不匹配，尝试自动适配...");
+            adaptedData = {
+              PronunciationAssessment: {
+                AccuracyScore: payload.pronunciation || payload.score || 0
+              },
+              Words: payload.phonemes ? [{
+                Phonemes: payload.phonemes.map(p => ({
+                  Phoneme: p.Phoneme || p.phoneme,
+                  PronunciationAssessment: { AccuracyScore: p.AccuracyScore || p.score || 0 }
+                }))
+              }] : []
+            };
+          }
+
+          renderResult(adaptedData);
+          logToScreen("🎉 评测结果渲染完成");
         }
 
-        logToScreen(`评分已达: ${rawData.pronunciation}`);
+        // 2. 接收状态更新 (从 Anki 发送)
+        if (msg.type === 'ASSESSMENT_STATUS') {
+          const statusText = document.getElementById('status');
+          if (statusText && msg.status) {
+            statusText.innerText = msg.status;
+            logToScreen(`📊 状态更新: ${msg.status}`);
+          }
 
-        const adaptedData = {
-          PronunciationAssessment: { AccuracyScore: rawData.pronunciation },
-          Words: [{
-            Phonemes: rawData.phonemes.map(p => ({
-              Phoneme: p.Phoneme,
-              PronunciationAssessment: { AccuracyScore: p.AccuracyScore }
-            }))
-          }]
-        };
+          // 如果正在录音，可以显示特殊状态
+          if (msg.recording) {
+            logToScreen("🎙 录音中...");
+          }
+        }
 
-        renderResult(adaptedData);
-        if (statusText) statusText.innerText = "测评完成";
-      }
-
-      if (msg.type === 'PLAY_ANKI_AUDIO') {
-        // iframe 被迫模式下，此逻辑在 Parent 端执行
-      }
-    });
+        // 3. 播放Anki音频 (兼容旧逻辑)
+        if (msg.type === 'PLAY_ANKI_AUDIO') {
+          const audioTags = document.getElementsByTagName('audio');
+          for (let i = 0; i < audioTags.length; i++) {
+            if (audioTags[i].src.indexOf(msg.filename) !== -1) {
+              audioTags[i].currentTime = 0;
+              audioTags[i].play();
+              break;
+            }
+          }
+        }
+      });
 
     // 按钮事件绑定
     stdWordBtn.onclick = () => {
