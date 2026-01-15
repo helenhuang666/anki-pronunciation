@@ -311,31 +311,8 @@
       }
     }
 
-    /* 🔥 极端增强型调试日志台 (排障专用) */
-    display: none !important;
-    /* 隐藏调试日志 */
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background: #ffffff !important;
-    /* 强制纯白不透明 */
-    border: 4px solid #ff5252 !important;
-    /* 鲜艳粗红边框 */
-    padding: 12px;
-    font-family: 'Courier New',
-    monospace;
-    font-size: 14px;
-    line-height: 1.5;
-    color: #d32f2f;
-    /* 深红色字体 */
-    max-height: 250px;
-    overflow-y: auto;
-    z-index: 2147483647 !important;
-    /* 绝对置顶 */
-    display: block !important;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    font-weight: bold;
+    #debug-log {
+      display: none !important;
     }
 
     .log-line {
@@ -357,9 +334,7 @@
 </head>
 
 <body>
-  <div id="debug-log">
-    <div class="log-line">[SYS] 接收终端就绪...</div>
-  </div>
+  <!-- 调试日志已移除 -->
 
   <div class="container">
 
@@ -408,13 +383,7 @@
   <script>
     // ===== 顶级调试工具 =====
     function logToScreen(msg, type = '') {
-      const logEl = document.getElementById('debug-log');
-      if (!logEl) return;
-      const line = document.createElement('div');
-      line.className = 'log-line' + (type ? ' log-' + type : '');
-      line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      logEl.appendChild(line);
-      logEl.scrollTop = logEl.scrollHeight;
+      // 日志功能已禁用
     }
 
     // 初始化自检
@@ -727,6 +696,8 @@
       for (let i = 0; i < 5; i++) starHtml += i < starCount ? "★" : "<span class='gray'>☆</span>";
       starsEl.innerHTML = starHtml;
 
+      const targetPhonemes = [];
+      const displayPhonemesList = [];
       const targetPhonemes = [];
       const displayPhonemesList = [];
       if (nbest.Words && nbest.Words.length > 0) {
