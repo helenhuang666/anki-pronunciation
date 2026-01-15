@@ -45,7 +45,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 20px;
+      padding: 5px 20px;
       min-height: 400px;
       /* 确保 iframe 中有最小高度 */
       overflow-y: auto;
@@ -79,14 +79,10 @@
     }
 
     /* ===== Target Word & IPA ===== */
-    #target-word {
-      font-size: 32px;
-      font-weight: 600;
-      color: #3A66B8;
-      /* 主体深蓝色 */
-      margin-bottom: 4px;
-      text-align: center;
-      margin-top: 20px;
+    /* 移除单词和音标显示，由 Anki 负责 */
+    #target-word,
+    #target-ipa {
+      display: none !important;
     }
 
     #target-ipa {
@@ -320,8 +316,8 @@
 
 
     <!-- Header Word & IPA -->
-    <div id="target-word">Apple</div>
-    <div id="target-ipa"></div>
+    <div id="target-word" style="display:none;"></div>
+    <div id="target-ipa" style="display:none;"></div>
 
     <!-- Score Header -->
     <div class="score-header" id="score-header" style="opacity: 0;">
@@ -333,8 +329,8 @@
 
     <!-- Bars Area -->
     <div class="bars-container" id="bars-container">
-      <div style="color:#666; font-size: 16px; margin: 20px; text-align: center; line-height: 1.6;">
-        请点击下方麦克风开始录音
+      <div style="color:#666; font-size: 14px; margin: 10px; text-align: center;">
+        评估结果显示区域
       </div>
     </div>
   </div>
