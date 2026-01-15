@@ -36,6 +36,11 @@ app.get("/eval", (req, res) => {
   res.sendFile(path.join(__dirname, "eval.html"));
 });
 
+// 纯净稳定路由 (V59+)
+app.get("/pro", (req, res) => {
+  res.sendFile(path.join(__dirname, "pro_eval.html"));
+});
+
 // ===== PWA 文件 =====
 app.get("/manifest.json", (req, res) => {
   res.sendFile(path.join(__dirname, "manifest.json"));
