@@ -393,21 +393,22 @@
     const isExternalControl = params.get('ext_record') === '1';
 
     // 🔥 外部录音模式：隐藏所有录音控件
-    if (isExternalControl) {
-      const recordingControls = document.getElementById('recording-controls');
-      const statusEl = document.getElementById('status');
-      const controlsSection = document.getElementById('controls-section');
+    const recordingControls = document.getElementById('recording-controls');
+    const statusEl = document.getElementById('status');
+    const controlsSection = document.getElementById('controls-section');
+    const stdBtnInIframe = document.getElementById('stdWordBtn'); // Iframe 内部的标准发音
 
-      if (recordingControls) recordingControls.style.display = 'none';
-      if (statusEl) statusEl.style.display = 'none';
-      if (controlsSection) {
-        controlsSection.style.display = 'none';
-        controlsSection.style.visibility = 'hidden';
-      }
+    if (recordingControls) recordingControls.style.display = 'none';
+    if (statusEl) statusEl.style.display = 'none';
+    if (stdBtnInIframe) stdBtnInIframe.style.display = 'none'; // 永远隐藏 iframe 内的标准发音，避免重复
+    if (controlsSection) {
+      controlsSection.style.display = 'none';
+      controlsSection.style.visibility = 'hidden';
+    }
 
-      const style = document.createElement('style');
-      style.textContent = `
-        .controls, #debug-log, .debug-log, #recording-controls, #status { 
+    const style = document.createElement('style');
+    style.textContent = `
+        .controls, #debug-log, .debug-log, #recording-controls, #status, #stdWordBtn { 
           display: none !important; 
           visibility: hidden !important; 
           height: 0 !important; 
@@ -417,7 +418,11 @@
           overflow: hidden !important;
         }
       `;
-      document.head.appendChild(style);
+    document.head.appendChild(style);
+    } else {
+      // 本地录音模式 (Android/PC)
+      const stdBtnInIframe = document.getElementById('stdWordBtn');
+      if (stdBtnInIframe) stdBtnInIframe.style.display = 'none'; // 依然隐藏，因为 Anki 已经有了
     }
 
     if (isIOS) document.body.classList.add("ios-mode");
@@ -817,20 +822,16 @@
       recordBtn.onclick = async () => {
         // 适配逻辑：如果是 Android 或 PC 端的 Anki 内嵌环境，执行逃逸跳转
         if (!isIOS && (isWebView || isAnkiPC) && !recording) {
-          logDebug("触发环境逃逸跳转 (PC/Android)...");
-          statusLabel.innerText = "正在尝试打开外部浏览器...";
-          const externalUrl = window.location.href;
-
-          // 尝试多种逃逸方式
-          const win = window.open(externalUrl, "_blank");
-          if (!win || win.closed || typeof win.closed === 'undefined') {
-            // 如果被拦截，引导用户点击
-            statusLabel.innerHTML = `<a href="${externalUrl}" target="_blank" style="color:#3A66B8;text-decoration:underline;">录音权限受阻，请点击此处并在浏览器中打开</a>`;
-          } else {
-            location.href = externalUrl; // 物理重定向作为兜底
-            statusLabel.innerText = "请在外部浏览器中操作";
+          logDebug("检测到嵌入式环境 (Android/PC)... 仍尝试进行本地录制");
+          // 移除温和提示，直接尝试录制，如果失败再跳转
+          try {
+            await startRecord();
+            return;
+          } catch (e) {
+            logDebug("本地录制初始化失败，引导跳转浏览器...");
+            statusLabel.innerHTML = `<a href="${window.location.href}" target="_blank" style="color:#3A66B8;text-decoration:underline;background:#eee;padding:10px;border-radius:5px;display:block;margin:10px;">录音受限，请点此在浏览器中评测</a>`;
+            return;
           }
-          return;
         }
 
         if (!recording) {
