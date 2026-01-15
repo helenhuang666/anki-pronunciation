@@ -450,12 +450,18 @@
       logToScreen("🎯 外部录音模式启用，禁用本地录音功能");
       const recordingControls = document.getElementById('recording-controls');
       const statusEl = document.getElementById('status');
+      const controlsSection = document.getElementById('controls-section');
+
+      // 强制隐藏
       if (recordingControls) recordingControls.style.display = 'none';
       if (statusEl) statusEl.style.display = 'none';
+      // 如果是在外部模式且未收到结果前，隐藏整个控制区
+      if (controlsSection) controlsSection.style.visibility = 'hidden';
 
-      // 禁用调试日志（生产环境）
-      const debugLog = document.getElementById('debug-log');
-      if (debugLog) debugLog.style.display = 'none';
+      // 覆盖 CSS
+      const style = document.createElement('style');
+      style.textContent = '.controls { display: none !important; } .debug-log { display: none !important; }';
+      document.head.appendChild(style);
     }
 
     if (isIOS) document.body.classList.add("ios-mode");
@@ -976,75 +982,68 @@
     // 👂 全局消息监听器
     window.addEventListener('message', event => {
       const msg = event.data;
-      if (!msg || !msg.type) {
-        logToScreen("❓ 收到未知格式消息: " + JSON.stringify(msg));
-        if (!msg || !msg.type) return;
+      if (!msg || !msg.type) return;
 
-        logToScreen(`📨 收到消息: ${msg.type}`);
+      logToScreen(`📨 收到消息: ${msg.type}`);
 
-        // 1. 接收评测结果 (从 Anki 发送)
-        if (msg.type === 'ASSESSMENT_RESULT') {
-          logToScreen("✅ 收到评测结果，正在渲染...", "in");
-          const payload = msg.payload;
+      // 1. 接收评测结果 (从 Anki 发送)
+      if (msg.type === 'ASSESSMENT_RESULT') {
+        logToScreen("✅ 收到评测结果，正在渲染...", "in");
+        const payload = msg.payload;
 
-          if (!payload) {
-            logToScreen("❌ 评测结果为空", "err");
-            return;
-          }
-
-          // 检查数据结构并适配
-          let adaptedData;
-          if (payload.nbest) {
-            // Azure完整格式
-            adaptedData = payload.nbest;
-          } else if (payload.PronunciationAssessment && payload.Words) {
-            // 简化格式
-            adaptedData = payload;
-          } else {
-            logToScreen("⚠️ 数据格式不匹配，尝试自动适配...");
-            adaptedData = {
-              PronunciationAssessment: {
-                AccuracyScore: payload.pronunciation || payload.score || 0
-              },
-              Words: payload.phonemes ? [{
-                Phonemes: payload.phonemes.map(p => ({
-                  Phoneme: p.Phoneme || p.phoneme,
-                  PronunciationAssessment: { AccuracyScore: p.AccuracyScore || p.score || 0 }
-                }))
-              }] : []
-            };
-          }
-
-          renderResult(adaptedData);
-          logToScreen("🎉 评测结果渲染完成");
+        if (!payload) {
+          logToScreen("❌ 评测结果为空", "err");
+          return;
         }
 
-        // 2. 接收状态更新 (从 Anki 发送)
-        if (msg.type === 'ASSESSMENT_STATUS') {
-          const statusText = document.getElementById('status');
-          if (statusText && msg.status) {
-            statusText.innerText = msg.status;
-            logToScreen(`📊 状态更新: ${msg.status}`);
-          }
-
-          // 如果正在录音，可以显示特殊状态
-          if (msg.recording) {
-            logToScreen("🎙 录音中...");
-          }
+        // 检查数据结构并适配
+        let adaptedData;
+        if (payload.nbest) {
+          adaptedData = payload.nbest;
+        } else if (payload.PronunciationAssessment && payload.Words) {
+          adaptedData = payload;
+        } else {
+          logToScreen("⚠️ 数据格式不匹配，尝试自动适配...");
+          adaptedData = {
+            PronunciationAssessment: {
+              AccuracyScore: payload.pronunciation || payload.score || 0
+            },
+            Words: payload.phonemes ? [{
+              Phonemes: payload.phonemes.map(p => ({
+                Phoneme: p.Phoneme || p.phoneme,
+                PronunciationAssessment: { AccuracyScore: p.AccuracyScore || p.score || 0 }
+              }))
+            }] : []
+          };
         }
 
-        // 3. 播放Anki音频 (兼容旧逻辑)
-        if (msg.type === 'PLAY_ANKI_AUDIO') {
-          const audioTags = document.getElementsByTagName('audio');
-          for (let i = 0; i < audioTags.length; i++) {
-            if (audioTags[i].src.indexOf(msg.filename) !== -1) {
-              audioTags[i].currentTime = 0;
-              audioTags[i].play();
-              break;
-            }
+        renderResult(adaptedData);
+        logToScreen("🎉 评测结果渲染完成");
+        // 渲染完成后隐藏状态
+        if (statusLabel) statusLabel.style.display = 'none';
+      }
+
+      // 2. 接收状态更新 (从 Anki 发送)
+      if (msg.type === 'ASSESSMENT_STATUS') {
+        const statusText = document.getElementById('status');
+        if (statusText && msg.status) {
+          statusText.innerText = msg.status;
+          logToScreen(`📊 状态更新: ${msg.status}`);
+        }
+      }
+
+      // 3. 播放Anki音频
+      if (msg.type === 'PLAY_ANKI_AUDIO') {
+        const audioTags = document.getElementsByTagName('audio');
+        for (let i = 0; i < audioTags.length; i++) {
+          if (audioTags[i].src.indexOf(msg.filename) !== -1) {
+            audioTags[i].currentTime = 0;
+            audioTags[i].play();
+            break;
           }
         }
-      });
+      }
+    });
 
     // 按钮事件绑定
     stdWordBtn.onclick = () => {
