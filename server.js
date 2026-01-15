@@ -120,36 +120,29 @@ app.post("/assess", upload.single('audio'), async (req, res) => {
 
     const audioBuffer = req.file ? req.file.buffer : null;
     if (!audioBuffer) {
-      console.error("[ASSESS-SDK] Audio file missing in request");
+      console.error("[ASSESS-SDK] Audio file missing");
       return res.status(400).json({ success: false, message: "Audio file missing" });
     }
 
     const AZURE_KEY = (process.env.AZURE_KEY || "").trim();
     const AZURE_REGION = (process.env.AZURE_REGION || "").trim();
 
-    if (!AZURE_KEY || !AZURE_REGION) {
-      console.error("[ASSESS-SDK] Azure config missing");
-      return res.status(500).json({ success: false, message: "Azure config missing" });
+    // 探测格式
+    const isWav = audioBuffer.length > 4 && audioBuffer.toString('ascii', 0, 4) === 'RIFF';
+    console.info(`[ASSESS] Input: ${audioBuffer.length} bytes, isWav: ${isWav}, Mime: ${req.file.mimetype}`);
+
+    if (!isWav) {
+      console.warn("[ASSESS] Warning: Received non-WAV audio. Azure Node.js SDK prefers PCM/WAV headerless.");
     }
 
-    // 探查音频格式：检查是否包含 WAV (RIFF) 头
-    const isWav = audioBuffer.length > 4 && audioBuffer.toString('ascii', 0, 4) === 'RIFF';
-    const mimeType = req.body.mimetype || req.file.mimetype || "";
+    // 将音频推送到 Azure Stream (强制使用 PCM 格式定义)
+    const format = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
+    const pushStream = sdk.AudioInputStream.createPushStream(format);
 
-    console.info(`[ASSESS-DEBUG] Buffer: ${audioBuffer.length}b, isWav: ${isWav}, Mime: ${mimeType}`);
-
-    let pushStream;
-    if (isWav) {
-      // 如果是标准 WAV，使用 PCM 流并跳过头
-      const format = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
-      pushStream = sdk.AudioInputStream.createPushStream(format);
+    // 如果包含 WAV 头且后端无法直读，我们剥离头信息；否则全量写入
+    if (isWav && audioBuffer.length > 44) {
       pushStream.write(audioBuffer.slice(44));
     } else {
-      // 如果是 WebM/Ogg/MP3 (iOS 常见情况)，使用压缩格式流
-      // Azure SDK 自动识别容器格式
-      console.log("[ASSESS-DEBUG] Using Compressed Stream (Any container)...");
-      const format = sdk.AudioStreamFormat.getCompressedFormat(sdk.AudioStreamContainerFormat.ANY);
-      pushStream = sdk.AudioInputStream.createPushStream(format);
       pushStream.write(audioBuffer);
     }
     pushStream.close();
