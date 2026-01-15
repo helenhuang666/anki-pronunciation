@@ -392,22 +392,22 @@
     const isAnkiPC = /QtWebEngine/i.test(navigator.userAgent);
     const isExternalControl = params.get('ext_record') === '1';
 
-    // 🔥 外部录音模式：隐藏所有录音控件
     const recordingControls = document.getElementById('recording-controls');
     const statusEl = document.getElementById('status');
     const controlsSection = document.getElementById('controls-section');
-    const stdBtnInIframe = document.getElementById('stdWordBtn'); // Iframe 内部的标准发音
+    const stdBtnInIframe = document.getElementById('stdWordBtn');
 
-    if (recordingControls) recordingControls.style.display = 'none';
-    if (statusEl) statusEl.style.display = 'none';
-    if (stdBtnInIframe) stdBtnInIframe.style.display = 'none'; // 永远隐藏 iframe 内的标准发音，避免重复
-    if (controlsSection) {
-      controlsSection.style.display = 'none';
-      controlsSection.style.visibility = 'hidden';
-    }
+    if (isExternalControl) {
+      if (recordingControls) recordingControls.style.display = 'none';
+      if (statusEl) statusEl.style.display = 'none';
+      if (stdBtnInIframe) stdBtnInIframe.style.display = 'none';
+      if (controlsSection) {
+        controlsSection.style.display = 'none';
+        controlsSection.style.visibility = 'hidden';
+      }
 
-    const style = document.createElement('style');
-    style.textContent = `
+      const style = document.createElement('style');
+      style.textContent = `
         .controls, #debug-log, .debug-log, #recording-controls, #status, #stdWordBtn { 
           display: none !important; 
           visibility: hidden !important; 
@@ -418,7 +418,7 @@
           overflow: hidden !important;
         }
       `;
-    document.head.appendChild(style);
+      document.head.appendChild(style);
     } else {
       // 本地录音模式 (Android/PC)
       const stdBtnInIframe = document.getElementById('stdWordBtn');
@@ -675,16 +675,29 @@
     }
 
     /* ===== Render UI ===== */
+    /* ===== Render UI ===== */
     function renderResult(nbest) {
-      scoreHeader.style.opacity = "1";
-      barsContainer.style.display = "flex";
-      const acc = Math.round(nbest.PronunciationAssessment.AccuracyScore || 0);
-      mainScoreEl.innerHTML = `${acc}<span class="score-unit">分</span>`;
+      const mainScoreEl = document.getElementById("main-score");
+      const scoreHeader = document.getElementById("score-header");
+      const starsEl = document.getElementById("stars");
+      const barsContainer = document.getElementById("bars-container");
+      const ipaEl = document.getElementById("target-ipa");
+      const statusLabel = document.getElementById("status");
 
-      const starCount = Math.round(acc / 20);
-      let starHtml = "";
-      for (let i = 0; i < 5; i++) starHtml += i < starCount ? "★" : "<span class='gray'>☆</span>";
-      starsEl.innerHTML = starHtml;
+      if (scoreHeader) scoreHeader.style.opacity = "1";
+      if (barsContainer) barsContainer.style.display = "flex";
+
+      const acc = Math.round(nbest.PronunciationAssessment?.AccuracyScore || 0);
+      if (mainScoreEl) mainScoreEl.innerHTML = `${acc}<span class="score-unit">分</span>`;
+
+      if (starsEl) {
+        const starCount = Math.round(acc / 20);
+        let starHtml = "";
+        for (let i = 0; i < 5; i++) starHtml += i < starCount ? "★" : "<span class='gray'>☆</span>";
+        starsEl.innerHTML = starHtml;
+      }
+
+      if (statusLabel) statusLabel.innerText = "测评完成";
 
       const targetPhonemes = [];
       const displayPhonemesList = [];
@@ -695,14 +708,10 @@
             w.Phonemes.forEach(p => displayPhonemesList.push(getStandardIpa(p)));
           }
         });
-      } else {
-        logToScreen("ℹ️ 没有音素详情数据可显示");
       }
 
-      console.log("[DATA] Azure raw phonemes:", targetPhonemes);
-
       // 只有在用户完全没提供音标参数时，才使用 Azure 合成的音标
-      if (!ipaEl.innerText || ipaEl.innerText === "//" || ipaEl.innerText === "") {
+      if (ipaEl && (!ipaEl.innerText || ipaEl.innerText === "//" || ipaEl.innerText === "")) {
         const cleanList = displayPhonemesList.map(p => p.replace(/[\/\[\]\s]+/g, ''));
         ipaEl.innerText = `/${cleanList.join(' ')}/`;
       }
@@ -712,45 +721,36 @@
         try {
           alignedData = alignLettersToPhonemes(targetWord, targetPhonemes);
         } catch (e) {
-          console.warn("[ALIGN] Advanced engine failed, using fallback.", e);
-          // 极简兜底：直接按比例平铺（保证音素条绝不消失）
+          console.warn("[ALIGN] Advanced engine failed", e);
           alignedData = targetPhonemes.map(p => ({
             letters: "?",
             displayPh: getStandardIpa(p),
             ttsIpa: getStandardIpa(p),
-            score: p.PronunciationAssessment?.AccuracyScore || 0,
-            isFallback: true
+            score: p.PronunciationAssessment?.AccuracyScore || 0
           }));
         }
 
-        if (!alignedData || alignedData.length === 0) {
-          logDebug("对齐引擎返回空结果，无法渲染", "err");
-          return;
+        if (barsContainer) {
+          barsContainer.innerHTML = "";
+          alignedData.forEach(group => {
+            const div = document.createElement("div");
+            div.className = "bar-group";
+            div.dataset.ph = group.rawPhoneme || "";
+            div.onclick = () => playPhoneme(group.ttsIpa, group.displayPh, div.dataset);
+
+            const score = Math.round(group.score);
+            let colorClass = score >= 80 ? "bg-good" : (score >= 60 ? "bg-fair" : "bg-poor");
+
+            div.innerHTML = `
+              <div class="bar-letter">${group.letters}</div>
+              <div class="bar-ipa">/${group.displayPh}/</div>
+              <div class="bar-score ${colorClass}">${score}</div>
+            `;
+            barsContainer.appendChild(div);
+          });
         }
-
-        barsContainer.innerHTML = "";
-        alignedData.forEach(group => {
-          const div = document.createElement("div");
-          div.className = "bar-group";
-          // 存储元数据供点击时使用
-          div.dataset.ph = group.rawPhoneme;
-          div.dataset.isInitial = group.isInitial;
-          div.dataset.isFinal = group.isFinal;
-          div.onclick = () => playPhoneme(group.ttsIpa, group.displayPh, div.dataset);
-
-          const score = Math.round(group.score);
-          let colorClass = score >= 80 ? "bg-good" : (score >= 60 ? "bg-fair" : "bg-poor");
-
-          div.innerHTML = `
-            <div class="bar-letter">${group.letters}</div>
-            <div class="bar-ipa">/${group.displayPh}/</div>
-            <div class="bar-score ${colorClass}">${score}</div>
-          `;
-          barsContainer.appendChild(div);
-        });
       } catch (err) {
         console.error("Render Error:", err);
-        logDebug(`渲染失败: ${err.message}`, "err");
       }
     }
 
