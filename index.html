@@ -310,31 +310,11 @@
         transform: scale(1);
       }
     }
-
-    #debug-log {
-      display: none !important;
-    }
-
-    .log-line {
-      border-bottom: 2px solid #eee;
-      padding: 4px 0;
-      word-break: break-all;
-    }
-
-    .log-in {
-      background-color: #e8f5e9;
-      font-weight: bold;
-    }
-
-    .log-err {
-      background-color: #ffebee;
-      color: red;
-    }
   </style>
 </head>
 
 <body>
-  <!-- 调试日志已移除 -->
+  <!-- 核心展示容器 -->
 
   <div class="container">
 
@@ -418,20 +398,29 @@
 
     // 🔥 外部录音模式：隐藏所有录音控件
     if (isExternalControl) {
-      logToScreen("🎯 外部录音模式启用，禁用本地录音功能");
       const recordingControls = document.getElementById('recording-controls');
       const statusEl = document.getElementById('status');
       const controlsSection = document.getElementById('controls-section');
 
-      // 强制隐藏
       if (recordingControls) recordingControls.style.display = 'none';
       if (statusEl) statusEl.style.display = 'none';
-      // 如果是在外部模式且未收到结果前，隐藏整个控制区
-      if (controlsSection) controlsSection.style.visibility = 'hidden';
+      if (controlsSection) {
+        controlsSection.style.display = 'none';
+        controlsSection.style.visibility = 'hidden';
+      }
 
-      // 覆盖 CSS
       const style = document.createElement('style');
-      style.textContent = '.controls { display: none !important; } .debug-log { display: none !important; }';
+      style.textContent = `
+        .controls, #debug-log, .debug-log, #recording-controls, #status { 
+          display: none !important; 
+          visibility: hidden !important; 
+          height: 0 !important; 
+          min-height: 0 !important;
+          padding: 0 !important; 
+          margin: 0 !important; 
+          overflow: hidden !important;
+        }
+      `;
       document.head.appendChild(style);
     }
 
@@ -696,8 +685,6 @@
       for (let i = 0; i < 5; i++) starHtml += i < starCount ? "★" : "<span class='gray'>☆</span>";
       starsEl.innerHTML = starHtml;
 
-      const targetPhonemes = [];
-      const displayPhonemesList = [];
       const targetPhonemes = [];
       const displayPhonemesList = [];
       if (nbest.Words && nbest.Words.length > 0) {
