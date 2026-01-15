@@ -132,17 +132,24 @@ app.post("/assess", upload.single('audio'), async (req, res) => {
       return res.status(500).json({ success: false, message: "Azure config missing" });
     }
 
-    // 3. 将音频推送到 Azure Stream
-    const format = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
-    const pushStream = sdk.AudioInputStream.createPushStream(format);
+    // 探查音频格式：检查是否包含 WAV (RIFF) 头
+    const isWav = audioBuffer.length > 4 && audioBuffer.toString('ascii', 0, 4) === 'RIFF';
+    const mimeType = req.body.mimetype || req.file.mimetype || "";
 
-    // 打印 Buffer 探测
-    console.debug(`[ASSESS-DEBUG] AudioBuffer size: ${audioBuffer.length} bytes`);
+    console.info(`[ASSESS-DEBUG] Buffer: ${audioBuffer.length}b, isWav: ${isWav}, Mime: ${mimeType}`);
 
-    // 跳过 WAV 文件头（44字节），直接写入 PCM 数据
-    if (audioBuffer.length > 44) {
+    let pushStream;
+    if (isWav) {
+      // 如果是标准 WAV，使用 PCM 流并跳过头
+      const format = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
+      pushStream = sdk.AudioInputStream.createPushStream(format);
       pushStream.write(audioBuffer.slice(44));
     } else {
+      // 如果是 WebM/Ogg/MP3 (iOS 常见情况)，使用压缩格式流
+      // Azure SDK 自动识别容器格式
+      console.log("[ASSESS-DEBUG] Using Compressed Stream (Any container)...");
+      const format = sdk.AudioStreamFormat.getCompressedFormat(sdk.AudioStreamContainerFormat.ANY);
+      pushStream = sdk.AudioInputStream.createPushStream(format);
       pushStream.write(audioBuffer);
     }
     pushStream.close();
