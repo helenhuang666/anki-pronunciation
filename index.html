@@ -1054,20 +1054,26 @@
 
     async function sendCheck(blob) {
       const startTime = Date.now();
-      logDebug(`发起请求: /assess?text=${encodeURIComponent(targetWord)}`);
+      logDebug(`发起请求: /assess (Word: ${targetWord})`);
       try {
-        const res = await fetch(`/assess?text=${encodeURIComponent(targetWord)}`, {
+        const formData = new FormData();
+        formData.append('audio', blob, 'speech.wav');
+        formData.append('word', targetWord);
+
+        const res = await fetch('/assess', {
           method: "POST",
-          body: blob
+          body: formData
         });
         const data = await res.json();
-        if (data.NBest && data.NBest.length > 0) {
-          logDebug("成功");
+        if (data.success && data.nbest) {
+          logDebug("测评成功");
           statusLabel.innerText = "测评完成";
-          renderResult(data.NBest[0]);
+          renderResult(data.nbest);
+        } else {
+          logDebug("测评失败: " + (data.message || "原因未知"), "err");
         }
       } catch (e) {
-        logDebug(`失败: ${e.message}`, "err");
+        logDebug(`通讯失败: ${e.message}`, "err");
       }
     }
 
