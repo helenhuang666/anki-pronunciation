@@ -727,12 +727,18 @@
 
       const targetPhonemes = [];
       const displayPhonemesList = [];
-      nbest.Words.forEach(w => {
-        if (w.Phonemes) {
-          targetPhonemes.push(...w.Phonemes);
-          w.Phonemes.forEach(p => displayPhonemesList.push(getStandardIpa(p)));
-        }
-      });
+      const targetPhonemes = [];
+      const displayPhonemesList = [];
+      if (nbest.Words && nbest.Words.length > 0) {
+        nbest.Words.forEach(w => {
+          if (w.Phonemes) {
+            targetPhonemes.push(...w.Phonemes);
+            w.Phonemes.forEach(p => displayPhonemesList.push(getStandardIpa(p)));
+          }
+        });
+      } else {
+        logToScreen("ℹ️ 没有音素详情数据可显示");
+      }
 
       console.log("[DATA] Azure raw phonemes:", targetPhonemes);
 
@@ -988,38 +994,50 @@
 
       // 1. 接收评测结果 (从 Anki 发送)
       if (msg.type === 'ASSESSMENT_RESULT') {
-        logToScreen("✅ 收到评测结果，正在渲染...", "in");
-        const payload = msg.payload;
-
-        if (!payload) {
-          logToScreen("❌ 评测结果为空", "err");
-          return;
-        }
+        logToScreen("✅ 收到评测结果，开始渲染...", "in");
+        const payload = msg.payload || msg; // 兼容写法
 
         // 检查数据结构并适配
-        let adaptedData;
+        let adaptedData = null;
         if (payload.nbest) {
           adaptedData = payload.nbest;
         } else if (payload.PronunciationAssessment && payload.Words) {
           adaptedData = payload;
-        } else {
-          logToScreen("⚠️ 数据格式不匹配，尝试自动适配...");
+        } else if (payload.success === true || payload.pronunciation !== undefined) {
+          // 适配简化版的成功返回
+          logToScreen("ℹ️ 识别到简化版数据格式");
           adaptedData = {
             PronunciationAssessment: {
-              AccuracyScore: payload.pronunciation || payload.score || 0
+              AccuracyScore: payload.pronunciation || payload.score || 0,
+              CompletenessScore: 100,
+              FluencyScore: 100,
+              PronScore: payload.pronunciation || payload.score || 0
             },
             Words: payload.phonemes ? [{
+              Word: targetWord,
+              PronunciationAssessment: { AccuracyScore: payload.pronunciation || 0 },
               Phonemes: payload.phonemes.map(p => ({
-                Phoneme: p.Phoneme || p.phoneme,
+                Phoneme: p.Phoneme || p.phoneme || "?",
                 PronunciationAssessment: { AccuracyScore: p.AccuracyScore || p.score || 0 }
               }))
             }] : []
           };
+        } else {
+          logToScreen("⚠️ 无法识别的数据结构，尝试强制渲染", "err");
+          // 万能适配器
+          adaptedData = {
+            PronunciationAssessment: { AccuracyScore: payload.score || 0 },
+            Words: []
+          };
         }
 
-        renderResult(adaptedData);
-        logToScreen("🎉 评测结果渲染完成");
-        // 渲染完成后隐藏状态
+        try {
+          renderResult(adaptedData);
+          logToScreen("🎉 渲染完成");
+        } catch (e) {
+          logToScreen("❌ 渲染代码崩溃: " + e.message, "err");
+        }
+
         if (statusLabel) statusLabel.style.display = 'none';
       }
 
