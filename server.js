@@ -31,6 +31,11 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
+// Anki 专用路由 (规避缓存)
+app.get("/eval", (req, res) => {
+  res.sendFile(path.join(__dirname, "eval.html"));
+});
+
 // ===== PWA 文件 =====
 app.get("/manifest.json", (req, res) => {
   res.sendFile(path.join(__dirname, "manifest.json"));
