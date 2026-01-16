@@ -484,22 +484,27 @@
     const VOWELS = ["ae", "ax", "ah", "aa", "ao", "ih", "eh", "iy", "uh", "uw", "er", "axr", "ey", "ay", "oy", "aw", "ow"];
 
     function getStandardIpa(pObj, index, allPhonemes) {
+      if (!pObj) return "";
       if (pObj.IPA) return pObj.IPA;
       const code = (pObj.Phoneme || "").toLowerCase();
 
+      // V74: 增强健壮性，防止参数缺失
+      const phArr = allPhonemes || [];
+      const idx = (index !== undefined) ? index : -1;
+
       // V73: 专业音位变体检测 (l & r)
       if (code === "l") {
-        const nextPh = allPhonemes[index + 1];
+        const nextPh = (idx >= 0 && idx + 1 < phArr.length) ? phArr[idx + 1] : null;
         const isFollowedByVowel = nextPh && VOWELS.includes(nextPh.Phoneme.toLowerCase());
         // 词首或元音前 -> Clear L
-        return isFollowedByVowel || index === 0 ? "l_light" : "l_dark";
+        return isFollowedByVowel || idx === 0 ? "l_light" : "l_dark";
       }
 
       if (code === "r") {
-        const prevPh = allPhonemes[index - 1];
+        const prevPh = (idx >= 1) ? phArr[idx - 1] : null;
         const isPrecededByVowel = prevPh && VOWELS.includes(prevPh.Phoneme.toLowerCase());
         // 词尾或元音后 -> Weak R/Final R
-        return isPrecededByVowel || index === allPhonemes.length - 1 ? "r_final" : "r_initial";
+        return isPrecededByVowel || idx === phArr.length - 1 ? "r_final" : "r_initial";
       }
 
       return ARPABET_TO_IPA[code] || code;
@@ -723,7 +728,8 @@
         nbest.Words.forEach(w => {
           if (w.Phonemes) {
             targetPhonemes.push(...w.Phonemes);
-            w.Phonemes.forEach(p => displayPhonemesList.push(getStandardIpa(p)));
+            // V74: 修复调用链，传递索引和完整数组
+            w.Phonemes.forEach((p, idx, arr) => displayPhonemesList.push(getStandardIpa(p, idx, arr)));
           }
         });
       } else {
