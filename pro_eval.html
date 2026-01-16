@@ -45,7 +45,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 5px 20px;
+      padding: 20px;
       min-height: 400px;
       /* 确保 iframe 中有最小高度 */
       overflow-y: auto;
@@ -79,10 +79,14 @@
     }
 
     /* ===== Target Word & IPA ===== */
-    /* 移除单词和音标显示，由 Anki 负责 */
-    #target-word,
-    #target-ipa {
-      display: none !important;
+    #target-word {
+      font-size: 32px;
+      font-weight: 600;
+      color: #3A66B8;
+      /* 主体深蓝色 */
+      margin-bottom: 4px;
+      text-align: center;
+      margin-top: 20px;
     }
 
     #target-ipa {
@@ -217,18 +221,6 @@
     /* Red */
 
     /* ===== Bottom Controls ===== */
-    #recording-controls {
-      position: relative;
-      z-index: 1000;
-      margin: 20px 0;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      min-height: 120px;
-    }
-
     .controls {
       padding: 0 20px 40px 20px;
       display: flex;
@@ -273,6 +265,7 @@
       height: 72px;
       border-radius: 50%;
       background-color: #3A66B8;
+      /* 统一主体深蓝色 */
       border: none;
       display: flex;
       justify-content: center;
@@ -327,8 +320,8 @@
 
 
     <!-- Header Word & IPA -->
-    <div id="target-word" style="display:none;"></div>
-    <div id="target-ipa" style="display:none;"></div>
+    <div id="target-word">Apple</div>
+    <div id="target-ipa"></div>
 
     <!-- Score Header -->
     <div class="score-header" id="score-header" style="opacity: 0;">
@@ -339,7 +332,11 @@
     <div id="tip-box"></div>
 
     <!-- Bars Area -->
-    <div class="bars-container" id="bars-container"></div>
+    <div class="bars-container" id="bars-container">
+      <div style="color:#666; font-size: 16px; margin: 20px; text-align: center; line-height: 1.6;">
+        请点击下方麦克风开始录音
+      </div>
+    </div>
   </div>
 
   <!-- Bottom Controls -->
@@ -364,14 +361,24 @@
   </div>
 
   <script>
+    // ===== 顶级调试工具 =====
+    function logToScreen(msg, type = '') {
+      // 日志功能已禁用
+    }
+
+    // 初始化自检
+    logToScreen("🚀 调试终端激活...");
+    logToScreen("📍 当前源: " + window.location.origin);
+    logToScreen("📜 参数: " + location.search.substring(0, 100));
+
+    // 握手信号：告诉父窗口，我准备好了！
     function signalReady() {
+      logToScreen("📡 发送 IFRAME_READY 握手...");
       window.parent.postMessage({ type: 'IFRAME_READY' }, '*');
     }
-    signalReady();
 
-    function logToScreen(msg, type = '') {
-      console.log(`[LOG] ${msg}`);
-    }
+    // 延迟 300ms 确保脚本解析完
+    signalReady();
 
     function logDebug(msg) { console.log(msg); }
 
@@ -389,15 +396,14 @@
     const isAnkiPC = /QtWebEngine/i.test(navigator.userAgent);
     const isExternalControl = params.get('ext_record') === '1';
 
-    const recordingControls = document.getElementById('recording-controls');
-    const statusEl = document.getElementById('status');
-    const controlsSection = document.getElementById('controls-section');
-    const stdBtnInIframe = document.getElementById('stdWordBtn');
-
+    // 🔥 外部录音模式：隐藏所有录音控件
     if (isExternalControl) {
+      const recordingControls = document.getElementById('recording-controls');
+      const statusEl = document.getElementById('status');
+      const controlsSection = document.getElementById('controls-section');
+
       if (recordingControls) recordingControls.style.display = 'none';
       if (statusEl) statusEl.style.display = 'none';
-      if (stdBtnInIframe) stdBtnInIframe.style.display = 'none';
       if (controlsSection) {
         controlsSection.style.display = 'none';
         controlsSection.style.visibility = 'hidden';
@@ -405,7 +411,7 @@
 
       const style = document.createElement('style');
       style.textContent = `
-        .controls, #debug-log, .debug-log, #recording-controls, #status, #stdWordBtn { 
+        .controls, #debug-log, .debug-log, #recording-controls, #status { 
           display: none !important; 
           visibility: hidden !important; 
           height: 0 !important; 
@@ -416,20 +422,11 @@
         }
       `;
       document.head.appendChild(style);
-    } else {
-      // 本地录音模式 (Android/PC)
-      const stdBtnInIframe = document.getElementById('stdWordBtn');
-      if (stdBtnInIframe) stdBtnInIframe.style.display = 'none'; // 依然隐藏，因为 Anki 已经有了
     }
 
     if (isIOS) document.body.classList.add("ios-mode");
     if (isAnkiPC) document.body.classList.add("pc-mode");
     document.body.classList.add("loaded");
-
-    // V69: 终极简化节点
-    const statusLabel = document.getElementById("status");
-    const recordBtn = document.getElementById("recordBtn");
-    const playbackBtn = document.getElementById("playbackBtn");
 
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
@@ -678,35 +675,15 @@
 
     /* ===== Render UI ===== */
     function renderResult(nbest) {
-      logToScreen("🎨 正在渲染评分条...");
-      const mainScoreEl = document.getElementById("main-score");
-      const scoreHeader = document.getElementById("score-header");
-      const starsEl = document.getElementById("stars");
-      const barsContainer = document.getElementById("bars-container");
+      scoreHeader.style.opacity = "1";
+      barsContainer.style.display = "flex";
+      const acc = Math.round(nbest.PronunciationAssessment.AccuracyScore || 0);
+      mainScoreEl.innerHTML = `${acc}<span class="score-unit">分</span>`;
 
-      if (!barsContainer) {
-        logToScreen("⚠️ 渲染失败：barsContainer 节点丢失", "err");
-        return;
-      }
-      barsContainer.innerHTML = ""; // 强制清空
-
-      const acc = Math.round(nbest.PronunciationAssessment?.AccuracyScore || 0);
-      if (mainScoreEl) mainScoreEl.innerHTML = `${acc}<span class="score-unit">分</span>`;
-
-      if (starsEl) {
-        const starCount = Math.round(acc / 20);
-        let starHtml = "";
-        for (let i = 0; i < 5; i++) starHtml += i < starCount ? "★" : "<span class='gray'>☆</span>";
-        starsEl.innerHTML = starHtml;
-      }
-
-      const ipaEl = document.getElementById("target-ipa");
-      const statusLabel = document.getElementById("status");
-
-      if (scoreHeader) scoreHeader.style.opacity = "1";
-      if (barsContainer) barsContainer.style.display = "flex";
-
-      if (statusLabel) statusLabel.innerText = "测评完成 (V66)";
+      const starCount = Math.round(acc / 20);
+      let starHtml = "";
+      for (let i = 0; i < 5; i++) starHtml += i < starCount ? "★" : "<span class='gray'>☆</span>";
+      starsEl.innerHTML = starHtml;
 
       const targetPhonemes = [];
       const displayPhonemesList = [];
@@ -717,10 +694,14 @@
             w.Phonemes.forEach(p => displayPhonemesList.push(getStandardIpa(p)));
           }
         });
+      } else {
+        logToScreen("ℹ️ 没有音素详情数据可显示");
       }
 
+      console.log("[DATA] Azure raw phonemes:", targetPhonemes);
+
       // 只有在用户完全没提供音标参数时，才使用 Azure 合成的音标
-      if (ipaEl && (!ipaEl.innerText || ipaEl.innerText === "//" || ipaEl.innerText === "")) {
+      if (!ipaEl.innerText || ipaEl.innerText === "//" || ipaEl.innerText === "") {
         const cleanList = displayPhonemesList.map(p => p.replace(/[\/\[\]\s]+/g, ''));
         ipaEl.innerText = `/${cleanList.join(' ')}/`;
       }
@@ -730,36 +711,45 @@
         try {
           alignedData = alignLettersToPhonemes(targetWord, targetPhonemes);
         } catch (e) {
-          console.warn("[ALIGN] Advanced engine failed", e);
+          console.warn("[ALIGN] Advanced engine failed, using fallback.", e);
+          // 极简兜底：直接按比例平铺（保证音素条绝不消失）
           alignedData = targetPhonemes.map(p => ({
             letters: "?",
             displayPh: getStandardIpa(p),
             ttsIpa: getStandardIpa(p),
-            score: p.PronunciationAssessment?.AccuracyScore || 0
+            score: p.PronunciationAssessment?.AccuracyScore || 0,
+            isFallback: true
           }));
         }
 
-        if (barsContainer) {
-          barsContainer.innerHTML = "";
-          alignedData.forEach(group => {
-            const div = document.createElement("div");
-            div.className = "bar-group";
-            div.dataset.ph = group.rawPhoneme || "";
-            div.onclick = () => playPhoneme(group.ttsIpa, group.displayPh, div.dataset);
-
-            const score = Math.round(group.score);
-            let colorClass = score >= 80 ? "bg-good" : (score >= 60 ? "bg-fair" : "bg-poor");
-
-            div.innerHTML = `
-              <div class="bar-letter">${group.letters}</div>
-              <div class="bar-ipa">/${group.displayPh}/</div>
-              <div class="bar-score ${colorClass}">${score}</div>
-            `;
-            barsContainer.appendChild(div);
-          });
+        if (!alignedData || alignedData.length === 0) {
+          logDebug("对齐引擎返回空结果，无法渲染", "err");
+          return;
         }
+
+        barsContainer.innerHTML = "";
+        alignedData.forEach(group => {
+          const div = document.createElement("div");
+          div.className = "bar-group";
+          // 存储元数据供点击时使用
+          div.dataset.ph = group.rawPhoneme;
+          div.dataset.isInitial = group.isInitial;
+          div.dataset.isFinal = group.isFinal;
+          div.onclick = () => playPhoneme(group.ttsIpa, group.displayPh, div.dataset);
+
+          const score = Math.round(group.score);
+          let colorClass = score >= 80 ? "bg-good" : (score >= 60 ? "bg-fair" : "bg-poor");
+
+          div.innerHTML = `
+            <div class="bar-letter">${group.letters}</div>
+            <div class="bar-ipa">/${group.displayPh}/</div>
+            <div class="bar-score ${colorClass}">${score}</div>
+          `;
+          barsContainer.appendChild(div);
+        });
       } catch (err) {
         console.error("Render Error:", err);
+        logDebug(`渲染失败: ${err.message}`, "err");
       }
     }
 
@@ -831,22 +821,20 @@
       recordBtn.onclick = async () => {
         // 适配逻辑：如果是 Android 或 PC 端的 Anki 内嵌环境，执行逃逸跳转
         if (!isIOS && (isWebView || isAnkiPC) && !recording) {
-          logToScreen("检测到 Anki 环境 (Android/PC)... 开启本地权限请求环节");
-          try {
-            await startRecord();
-            return;
-          } catch (e) {
-            logToScreen("🚫 硬件权限失败: " + e.message, "err");
-            const finalUrl = window.location.href;
-            statusLabel.innerHTML = `
-               <div style="background:#fff9e6; border:2px solid #ffcc00; padding:15px; border-radius:10px; margin:10px 0; box-shadow:0 4px 8px rgba(0,0,0,0.1);">
-                 <p style="color:#856404; font-weight:bold; margin:0 0 10px 0; font-size:14px;">⚠️ Anki 麦克风受阻</p>
-                 <a href="${finalUrl}" target="_blank" style="background:#ffcc00; color:#000; padding:12px 20px; text-decoration:none; display:inline-block; border-radius:8px; font-weight:bold; font-size:16px;">点此打开外部浏览器评测</a>
-                 <div style="font-size:11px; color:#856404; margin-top:8px;">(报错信息: ${e.message})</div>
-               </div>
-            `;
-            return;
+          logDebug("触发环境逃逸跳转 (PC/Android)...");
+          statusLabel.innerText = "正在尝试打开外部浏览器...";
+          const externalUrl = window.location.href;
+
+          // 尝试多种逃逸方式
+          const win = window.open(externalUrl, "_blank");
+          if (!win || win.closed || typeof win.closed === 'undefined') {
+            // 如果被拦截，引导用户点击
+            statusLabel.innerHTML = `<a href="${externalUrl}" target="_blank" style="color:#3A66B8;text-decoration:underline;">录音权限受阻，请点击此处并在浏览器中打开</a>`;
+          } else {
+            location.href = externalUrl; // 物理重定向作为兜底
+            statusLabel.innerText = "请在外部浏览器中操作";
           }
+          return;
         }
 
         if (!recording) {
@@ -904,10 +892,22 @@
       if (window.recInput) window.recInput.disconnect();
       if (window.recStream) window.recStream.getTracks().forEach(t => t.stop());
 
-      logToScreen(`本地处理完成: ${Date.now() - startTime}ms`, "ok");
-      logToScreen(`音频包大小: ${wavBlob.size} bytes`, "ok");
+      // 合并 PCM 数据并生成 WAV
+      const totalLen = recBuffer.reduce((acc, b) => acc + b.length, 0);
+      const flatBuffer = new Float32Array(totalLen);
+      let offset = 0;
+      for (const b of recBuffer) {
+        flatBuffer.set(b, offset);
+        offset += b.length;
+      }
 
-      statusLabel.innerText = "正在云端评估...";
+      const wavBlob = encodeWAVFromFloat(flatBuffer);
+      lastRecordedBlob = wavBlob;
+      playbackBtn.disabled = false;
+
+      logDebug(`本地处理完成: ${Date.now() - startTime}ms`, "ok");
+      logDebug(`音频包大小: ${wavBlob.size} bytes`, "ok");
+
       sendCheck(wavBlob);
       if (audioContext) audioContext.close();
     }
@@ -1074,7 +1074,7 @@
 
     async function sendCheck(blob) {
       const startTime = Date.now();
-      logToScreen(`发起请求: /assess (Word: ${targetWord})`);
+      logDebug(`发起请求: /assess (Word: ${targetWord})`);
       try {
         const formData = new FormData();
         formData.append('audio', blob, 'speech.wav');
@@ -1085,17 +1085,15 @@
           body: formData
         });
         const data = await res.json();
-        if (data.success && (data.nbest || data.phonemes)) {
-          console.log("✅ 测评成功");
-          if (statusLabel) statusLabel.innerText = "测评完成";
-          renderResult(data.nbest || data);
-        }
-        else {
-          logToScreen("❌ 测评失败: " + (data.message || "原因未知"), "err");
-          if (statusLabel) statusLabel.innerText = "待重新录音";
+        if (data.success && data.nbest) {
+          logDebug("测评成功");
+          statusLabel.innerText = "测评完成";
+          renderResult(data.nbest);
+        } else {
+          logDebug("测评失败: " + (data.message || "原因未知"), "err");
         }
       } catch (e) {
-        logToScreen(`🚨 通讯故障: ${e.message}`, "err");
+        logDebug(`通讯失败: ${e.message}`, "err");
       }
     }
 
