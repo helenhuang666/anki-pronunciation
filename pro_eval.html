@@ -484,30 +484,34 @@
     const VOWELS = ["ae", "ax", "ah", "aa", "ao", "ih", "eh", "iy", "uh", "uw", "er", "axr", "ey", "ay", "oy", "aw", "ow"];
 
     function getStandardIpa(pObj, index, allPhonemes) {
-      if (!pObj) return "";
-      if (pObj.IPA) return pObj.IPA;
+      if (!pObj) return { display: "", tts: "" };
+      if (pObj.IPA) return { display: pObj.IPA, tts: pObj.IPA };
       const code = (pObj.Phoneme || "").toLowerCase();
 
-      // V74: 增强健壮性，防止参数缺失
       const phArr = allPhonemes || [];
       const idx = (index !== undefined) ? index : -1;
+      const stdIpa = ARPABET_TO_IPA[code] || code;
 
-      // V73: 专业音位变体检测 (l & r)
+      // V75: 双字段返回逻辑 - display 用于视觉，tts 用于发音
       if (code === "l") {
         const nextPh = (idx >= 0 && idx + 1 < phArr.length) ? phArr[idx + 1] : null;
         const isFollowedByVowel = nextPh && VOWELS.includes(nextPh.Phoneme.toLowerCase());
-        // 词首或元音前 -> Clear L
-        return isFollowedByVowel || idx === 0 ? "l_light" : "l_dark";
+        return {
+          display: "l",
+          tts: (isFollowedByVowel || idx === 0) ? "l_light" : "l_dark"
+        };
       }
 
       if (code === "r") {
         const prevPh = (idx >= 1) ? phArr[idx - 1] : null;
         const isPrecededByVowel = prevPh && VOWELS.includes(prevPh.Phoneme.toLowerCase());
-        // 词尾或元音后 -> Weak R/Final R
-        return isPrecededByVowel || idx === phArr.length - 1 ? "r_final" : "r_initial";
+        return {
+          display: "r",
+          tts: (isPrecededByVowel || idx === phArr.length - 1) ? "r_final" : "r_initial"
+        };
       }
 
-      return ARPABET_TO_IPA[code] || code;
+      return { display: stdIpa, tts: stdIpa };
     }
 
     /* ===== State ===== */
@@ -545,11 +549,15 @@
       const pCount = phonemes.length;
       let letterIndex = 0;
 
-      const phObjects = phonemes.map((p, idx) => ({
-        ipa: getStandardIpa(p, idx, phonemes),
-        score: p.PronunciationAssessment?.AccuracyScore || 0,
-        raw: p
-      }));
+      const phObjects = phonemes.map((p, idx) => {
+        const info = getStandardIpa(p, idx, phonemes);
+        return {
+          display: info.display,
+          tts: info.tts,
+          score: p.PronunciationAssessment?.AccuracyScore || 0,
+          raw: p
+        };
+      });
 
       const finalGroups = [];
 
@@ -560,13 +568,12 @@
         while (letterIndex < letters.length && !/[a-z]/.test(letters[letterIndex])) {
           letterIndex++;
         }
-        // 关键修复：即便字母用尽，只要音素还在，就继续循环以由最后条目承载，或输出空位
 
         let curChar = (letterIndex < letters.length) ? letters[letterIndex] : "";
         let groupLetters = curChar;
         let groupPhonemes = [curr.raw];
-        let displayIpa = curr.ipa;
-        let ttsIpa = curr.ipa;
+        let displayIpa = curr.display;
+        let ttsIpa = curr.tts;
         let totalScore = curr.score;
         let phonemeCount = 1;
 
@@ -574,53 +581,50 @@
         let nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
 
         // 场景 A: x 字母处理 (x -> /ks/ 或 /gz/)
-        if (curChar === 'x' && (curr.ipa === 'k' || curr.ipa === 'g') && nextPh && (nextPh.ipa === 's' || nextPh.ipa === 'z')) {
+        if (curChar === 'x' && (curr.display === 'k' || curr.display === 'g') && nextPh && (nextPh.display === 's' || nextPh.display === 'z')) {
           groupPhonemes.push(nextPh.raw);
-          displayIpa += nextPh.ipa;
-          ttsIpa += " " + nextPh.ipa;
+          displayIpa += nextPh.display;
+          ttsIpa += " " + nextPh.tts;
           totalScore = (totalScore + nextPh.score) / 2;
           i++;
           nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
         }
 
         // 场景 B: 多音素合并触发器 (如字母 'u' 对应 /j/ + /u:/)
-        else if ((curChar === 'u') && (curr.ipa === 'j') && nextPh && (nextPh.ipa === 'u' || nextPh.ipa === 'u:' || nextPh.ipa === 'ʊ')) {
+        else if ((curChar === 'u') && (curr.display === 'j') && nextPh && (nextPh.display === 'u' || nextPh.display.startsWith('u') || nextPh.display === 'ʊ')) {
           groupPhonemes.push(nextPh.raw);
-          displayIpa += nextPh.ipa;
-          ttsIpa += " " + nextPh.ipa;
+          displayIpa += nextPh.display;
+          ttsIpa += " " + nextPh.tts;
           totalScore = (totalScore + nextPh.score) / 2;
           i++;
           nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
         }
 
-        // 场景 C: 特殊 le 结尾合并为 (ə)l - 但仅当两个音素连续时才合并
+        // 场景 C: 特殊 le 结尾合并为 (ə)l
         const isLeSuffix = letters.endsWith('le') && (letterIndex >= letters.length - 2);
-        // 修改：仅当 ə 和 l 是连续音素时才合并，否则分开处理
-        if (isLeSuffix && curr.ipa === "ə" && nextPh && nextPh.ipa === "l") {
+        if (isLeSuffix && curr.display === "ə" && nextPh && nextPh.display === "l") {
           groupPhonemes.push(nextPh.raw);
-          displayIpa = `(${curr.ipa})${nextPh.ipa}`;
-          ttsIpa = `${curr.ipa} ${nextPh.ipa}`;
+          displayIpa = `(${curr.display})${nextPh.display}`;
+          ttsIpa = `${curr.tts} ${nextPh.tts}`;
           totalScore = (totalScore + nextPh.score) / 2;
           i++;
           nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
         }
 
         // 场景 D: 辅音簇合并 (tr, dr, ts, ds)
-        // 规则：tr->/tr/, dr->/dr/, ts->/ts/, ds->/dz/
         const combo = (letterIndex + 1 < letters.length) ? letters.substr(letterIndex, 2) : "";
         let isCluster = false;
-        if (combo === "tr" && curr.ipa === "t" && nextPh && nextPh.ipa === "r") isCluster = true;
-        else if (combo === "dr" && curr.ipa === "d" && nextPh && nextPh.ipa === "r") isCluster = true;
-        else if (combo === "ts" && curr.ipa === "t" && nextPh && (nextPh.ipa === "s" || nextPh.ipa === "z")) isCluster = true;
-        else if (combo === "ds" && curr.ipa === "d" && nextPh && (nextPh.ipa === "z" || nextPh.ipa === "s")) isCluster = true;
+        if (combo === "tr" && curr.display === "t" && nextPh && nextPh.display === "r") isCluster = true;
+        else if (combo === "dr" && curr.display === "d" && nextPh && nextPh.display === "r") isCluster = true;
+        else if (combo === "ts" && curr.display === "t" && nextPh && (nextPh.display === "s" || nextPh.display === "z")) isCluster = true;
+        else if (combo === "ds" && curr.display === "d" && nextPh && (nextPh.display === "z" || nextPh.display === "s")) isCluster = true;
 
         if (isCluster) {
           groupPhonemes.push(nextPh.raw);
-          displayIpa += nextPh.ipa;
-          ttsIpa += " " + nextPh.ipa;
+          displayIpa += nextPh.display;
+          ttsIpa += " " + nextPh.tts;
           totalScore = (totalScore + nextPh.score) / 2;
           i++;
-          // 更新 nextPh 供后续吸收逻辑判定坐标
           nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
         }
 
@@ -729,7 +733,10 @@
           if (w.Phonemes) {
             targetPhonemes.push(...w.Phonemes);
             // V74: 修复调用链，传递索引和完整数组
-            w.Phonemes.forEach((p, idx, arr) => displayPhonemesList.push(getStandardIpa(p, idx, arr)));
+            w.Phonemes.forEach((p, idx, arr) => {
+              const info = getStandardIpa(p, idx, arr);
+              displayPhonemesList.push(info.display);
+            });
           }
         });
       } else {
