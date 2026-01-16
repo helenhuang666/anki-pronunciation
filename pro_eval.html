@@ -81,8 +81,14 @@
 
     /* ===== Target Word & IPA ===== */
     #target-word {
+      font-size: 28px;
+      font-weight: 600;
+      color: #3A66B8;
+      text-align: center;
+      margin-top: 20px;
+      margin-bottom: 4px;
       display: none;
-      /* 隐藏单词，卡片已显示 */
+      /* 默认由 JS 控制环境显隐 */
     }
 
     #target-ipa {
@@ -474,9 +480,28 @@
       "p": "p", "b": "b", "t": "t", "d": "d", "k": "k", "g": "g", "f": "f", "v": "v", "th": "θ", "dh": "ð",
       "s": "s", "z": "z", "sh": "ʃ", "zh": "ʒ", "ch": "tʃ", "jh": "dʒ", "m": "m", "n": "n", "ng": "ŋ", "l": "l", "r": "r", "w": "w", "y": "j", "hh": "h"
     };
-    function getStandardIpa(pObj) {
+
+    const VOWELS = ["ae", "ax", "ah", "aa", "ao", "ih", "eh", "iy", "uh", "uw", "er", "axr", "ey", "ay", "oy", "aw", "ow"];
+
+    function getStandardIpa(pObj, index, allPhonemes) {
       if (pObj.IPA) return pObj.IPA;
       const code = (pObj.Phoneme || "").toLowerCase();
+
+      // V73: 专业音位变体检测 (l & r)
+      if (code === "l") {
+        const nextPh = allPhonemes[index + 1];
+        const isFollowedByVowel = nextPh && VOWELS.includes(nextPh.Phoneme.toLowerCase());
+        // 词首或元音前 -> Clear L
+        return isFollowedByVowel || index === 0 ? "l_light" : "l_dark";
+      }
+
+      if (code === "r") {
+        const prevPh = allPhonemes[index - 1];
+        const isPrecededByVowel = prevPh && VOWELS.includes(prevPh.Phoneme.toLowerCase());
+        // 词尾或元音后 -> Weak R/Final R
+        return isPrecededByVowel || index === allPhonemes.length - 1 ? "r_final" : "r_initial";
+      }
+
       return ARPABET_TO_IPA[code] || code;
     }
 
@@ -515,8 +540,8 @@
       const pCount = phonemes.length;
       let letterIndex = 0;
 
-      const phObjects = phonemes.map(p => ({
-        ipa: getStandardIpa(p),
+      const phObjects = phonemes.map((p, idx) => ({
+        ipa: getStandardIpa(p, idx, phonemes),
         score: p.PronunciationAssessment?.AccuracyScore || 0,
         raw: p
       }));
