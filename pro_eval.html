@@ -217,6 +217,18 @@
     /* Red */
 
     /* ===== Bottom Controls ===== */
+    #recording-controls {
+      position: relative;
+      z-index: 1000;
+      margin: 20px 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      min-height: 120px;
+    }
+
     .controls {
       padding: 0 20px 40px 20px;
       display: flex;
@@ -912,22 +924,10 @@
       if (window.recInput) window.recInput.disconnect();
       if (window.recStream) window.recStream.getTracks().forEach(t => t.stop());
 
-      // 合并 PCM 数据并生成 WAV
-      const totalLen = recBuffer.reduce((acc, b) => acc + b.length, 0);
-      const flatBuffer = new Float32Array(totalLen);
-      let offset = 0;
-      for (const b of recBuffer) {
-        flatBuffer.set(b, offset);
-        offset += b.length;
-      }
+      logToScreen(`本地处理完成: ${Date.now() - startTime}ms`, "ok");
+      logToScreen(`音频包大小: ${wavBlob.size} bytes`, "ok");
 
-      const wavBlob = encodeWAVFromFloat(flatBuffer);
-      lastRecordedBlob = wavBlob;
-      playbackBtn.disabled = false;
-
-      logDebug(`本地处理完成: ${Date.now() - startTime}ms`, "ok");
-      logDebug(`音频包大小: ${wavBlob.size} bytes`, "ok");
-
+      statusLabel.innerText = "正在云端评估...";
       sendCheck(wavBlob);
       if (audioContext) audioContext.close();
     }
@@ -1094,7 +1094,7 @@
 
     async function sendCheck(blob) {
       const startTime = Date.now();
-      logDebug(`发起请求: /assess (Word: ${targetWord})`);
+      logToScreen(`发起请求: /assess (Word: ${targetWord})`);
       try {
         const formData = new FormData();
         formData.append('audio', blob, 'speech.wav');
@@ -1106,14 +1106,16 @@
         });
         const data = await res.json();
         if (data.success && data.nbest) {
-          logDebug("测评成功");
-          statusLabel.innerText = "测评完成";
+          logToScreen("✅ 测评成功");
+          if (statusLabel) statusLabel.innerText = "测评完成";
           renderResult(data.nbest);
         } else {
-          logDebug("测评失败: " + (data.message || "原因未知"), "err");
+          logToScreen("❌ 测评失败: " + (data.message || "原因未知"), "err");
+          if (statusLabel) statusLabel.innerText = "待重新录音";
         }
       } catch (e) {
-        logDebug(`通讯失败: ${e.message}`, "err");
+        logToScreen(`🚨 通讯故障: ${e.message}`, "err");
+        if (statusLabel) statusLabel.innerText = "网络异常";
       }
     }
 
