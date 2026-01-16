@@ -422,6 +422,19 @@
     if (isAnkiPC) document.body.classList.add("pc-mode");
     document.body.classList.add("loaded");
 
+    // V72: 根据环境决定是否显示单词/音标
+    const wordDisplayEl = document.getElementById("target-word");
+    const ipaDisplayEl = document.getElementById("target-ipa");
+    if (!isExternalControl) {
+      // 跳转后的网页模式 -> 显示
+      if (wordDisplayEl) wordDisplayEl.style.display = "block";
+      if (ipaDisplayEl) ipaDisplayEl.style.display = "block";
+    } else {
+      // Anki 嵌入模式 -> 隐藏
+      if (wordDisplayEl) wordDisplayEl.style.display = "none";
+      if (ipaDisplayEl) ipaDisplayEl.style.display = "none";
+    }
+
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
     let userAudio = decodeURIComponent(params.get("audio") || params.get("audio_file") || params.get("USAudio") || params.get("usaudio") || "");
@@ -1079,6 +1092,13 @@
     }
 
     logDebug("主逻辑已绑定，排障模式就绪", "ok");
+    // V72: 页面加载后自动播放标准发音 (仅在非静音或用户预期下)
+    setTimeout(() => {
+      if (stdWordBtn) {
+        console.log("🔊 V72: 自动播放标准发音");
+        stdWordBtn.click();
+      }
+    }, 1000);
   </script>
 </body>
 
