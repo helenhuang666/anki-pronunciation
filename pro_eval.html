@@ -272,13 +272,13 @@
       width: 72px;
       height: 72px;
       border-radius: 50%;
-      background-color: #3A66B8;
-      /* 统一主体深蓝色 */
+      background-color: #2ecc71;
+      /* 改为绿色 (翠绿) */
       border: none;
       display: flex;
       justify-content: center;
       align-items: center;
-      box-shadow: 0 4px 10px rgba(58, 102, 184, 0.4);
+      box-shadow: 0 4px 10px rgba(46, 204, 113, 0.4);
       cursor: pointer;
       transition: all 0.2s;
       -webkit-tap-highlight-color: transparent;
@@ -322,6 +322,10 @@
 </head>
 
 <body>
+  <!-- V66 Debug Log Container (Shown for Android/PC) -->
+  <div id="debug-log"
+    style="display:none; position:fixed; top:0; left:0; width:100%; z-index:9999; background:rgba(255,255,255,0.9); border-bottom:1px solid #ddd; max-height:100px; overflow-y:auto; font-family:monospace; font-size:10px; padding:5px;">
+  </div>
   <!-- 核心展示容器 -->
 
   <div class="container">
@@ -340,11 +344,7 @@
     <div id="tip-box"></div>
 
     <!-- Bars Area -->
-    <div class="bars-container" id="bars-container">
-      <div style="color:#666; font-size: 14px; margin: 10px; text-align: center;">
-        评估结果显示区域
-      </div>
-    </div>
+    <div class="bars-container" id="bars-container"></div>
   </div>
 
   <!-- Bottom Controls -->
@@ -448,14 +448,16 @@
     if (isAnkiPC) document.body.classList.add("pc-mode");
     document.body.classList.add("loaded");
 
-    // V64: 允许调试日志在 Android/PC 显示
+    // V66: 全局节点
+    const statusLabel = document.getElementById("status");
+    const recordBtn = document.getElementById("recordBtn");
+    const playbackBtn = document.getElementById("playbackBtn");
+    const debugLogEl = document.getElementById("debug-log");
+
+    // V64-V66: 强制开启调试日志 (仅 Android/PC)
     if (!isIOS && debugLogEl) {
       debugLogEl.style.display = "block";
-      debugLogEl.style.maxHeight = "150px";
-      debugLogEl.style.overflowY = "auto";
-      debugLogEl.style.background = "#fff";
-      debugLogEl.style.border = "1px solid #ddd";
-      debugLogEl.style.padding = "5px";
+      logToScreen("V66-DEBUG-BOOT: Success");
     }
 
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
@@ -704,17 +706,18 @@
     }
 
     /* ===== Render UI ===== */
-    /* ===== Render UI ===== */
     function renderResult(nbest) {
+      logToScreen("🎨 正在渲染评分条...");
       const mainScoreEl = document.getElementById("main-score");
       const scoreHeader = document.getElementById("score-header");
       const starsEl = document.getElementById("stars");
       const barsContainer = document.getElementById("bars-container");
-      const ipaEl = document.getElementById("target-ipa");
-      const statusLabel = document.getElementById("status");
 
-      if (scoreHeader) scoreHeader.style.opacity = "1";
-      if (barsContainer) barsContainer.style.display = "flex";
+      if (!barsContainer) {
+        logToScreen("⚠️ 渲染失败：barsContainer 节点丢失", "err");
+        return;
+      }
+      barsContainer.innerHTML = ""; // 强制清空
 
       const acc = Math.round(nbest.PronunciationAssessment?.AccuracyScore || 0);
       if (mainScoreEl) mainScoreEl.innerHTML = `${acc}<span class="score-unit">分</span>`;
@@ -726,7 +729,13 @@
         starsEl.innerHTML = starHtml;
       }
 
-      if (statusLabel) statusLabel.innerText = "测评完成";
+      const ipaEl = document.getElementById("target-ipa");
+      const statusLabel = document.getElementById("status");
+
+      if (scoreHeader) scoreHeader.style.opacity = "1";
+      if (barsContainer) barsContainer.style.display = "flex";
+
+      if (statusLabel) statusLabel.innerText = "测评完成 (V66)";
 
       const targetPhonemes = [];
       const displayPhonemesList = [];
@@ -1106,16 +1115,17 @@
         });
         const data = await res.json();
         if (data.success && data.nbest) {
-          logToScreen("✅ 测评成功");
-          if (statusLabel) statusLabel.innerText = "测评完成";
+          logToScreen("✅ 测评成功", "ok");
+          const lbl = document.getElementById("status");
+          if (lbl) lbl.innerText = "测评完成 (V66)";
           renderResult(data.nbest);
-        } else {
+        }
+        else {
           logToScreen("❌ 测评失败: " + (data.message || "原因未知"), "err");
           if (statusLabel) statusLabel.innerText = "待重新录音";
         }
       } catch (e) {
         logToScreen(`🚨 通讯故障: ${e.message}`, "err");
-        if (statusLabel) statusLabel.innerText = "网络异常";
       }
     }
 
