@@ -272,13 +272,12 @@
       width: 72px;
       height: 72px;
       border-radius: 50%;
-      background-color: #2ecc71;
-      /* 改为绿色 (翠绿) */
+      background-color: #3A66B8;
       border: none;
       display: flex;
       justify-content: center;
       align-items: center;
-      box-shadow: 0 4px 10px rgba(46, 204, 113, 0.4);
+      box-shadow: 0 4px 10px rgba(58, 102, 184, 0.4);
       cursor: pointer;
       transition: all 0.2s;
       -webkit-tap-highlight-color: transparent;
@@ -322,10 +321,6 @@
 </head>
 
 <body>
-  <!-- V66 Debug Log Container (Shown for Android/PC) -->
-  <div id="debug-log"
-    style="display:none; position:fixed; top:0; left:0; width:100%; z-index:9999; background:rgba(255,255,255,0.9); border-bottom:1px solid #ddd; max-height:100px; overflow-y:auto; font-family:monospace; font-size:10px; padding:5px;">
-  </div>
   <!-- 核心展示容器 -->
 
   <div class="container">
@@ -369,31 +364,14 @@
   </div>
 
   <script>
-    // ===== 顶级调试工具 =====
-    const debugLogEl = document.getElementById("debug-log");
-    function logToScreen(msg, type = '') {
-      if (!debugLogEl) return;
-      const div = document.createElement("div");
-      div.style.cssText = "margin-bottom:4px; font-family:monospace; font-size:11px; color:#444;";
-      if (type === 'err') div.style.color = "red";
-      if (type === 'ok') div.style.color = "green";
-      div.innerText = `> ${msg}`;
-      debugLogEl.prepend(div);
-    }
-
-    // 初始化自检
-    logToScreen("🚀 调试终端激活...");
-    logToScreen("📍 当前源: " + window.location.origin);
-    logToScreen("📜 参数: " + location.search.substring(0, 100));
-
-    // 握手信号：告诉父窗口，我准备好了！
     function signalReady() {
-      logToScreen("📡 发送 IFRAME_READY 握手...");
       window.parent.postMessage({ type: 'IFRAME_READY' }, '*');
     }
-
-    // 延迟 300ms 确保脚本解析完
     signalReady();
+
+    function logToScreen(msg, type = '') {
+      console.log(`[LOG] ${msg}`);
+    }
 
     function logDebug(msg) { console.log(msg); }
 
@@ -448,17 +426,10 @@
     if (isAnkiPC) document.body.classList.add("pc-mode");
     document.body.classList.add("loaded");
 
-    // V66: 全局节点
+    // V69: 终极简化节点
     const statusLabel = document.getElementById("status");
     const recordBtn = document.getElementById("recordBtn");
     const playbackBtn = document.getElementById("playbackBtn");
-    const debugLogEl = document.getElementById("debug-log");
-
-    // V64-V66: 强制开启调试日志 (仅 Android/PC)
-    if (!isIOS && debugLogEl) {
-      debugLogEl.style.display = "block";
-      logToScreen("V66-DEBUG-BOOT: Success");
-    }
 
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
@@ -1114,11 +1085,10 @@
           body: formData
         });
         const data = await res.json();
-        if (data.success && data.nbest) {
-          logToScreen("✅ 测评成功", "ok");
-          const lbl = document.getElementById("status");
-          if (lbl) lbl.innerText = "测评完成 (V66)";
-          renderResult(data.nbest);
+        if (data.success && (data.nbest || data.phonemes)) {
+          console.log("✅ 测评成功");
+          if (statusLabel) statusLabel.innerText = "测评完成";
+          renderResult(data.nbest || data);
         }
         else {
           logToScreen("❌ 测评失败: " + (data.message || "原因未知"), "err");
