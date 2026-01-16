@@ -215,10 +215,11 @@ app.post("/assess", upload.single('audio'), async (req, res) => {
           // 打印转换后的数据概览
           console.log(`[ASSESS-SUCCESS] Score: ${pronunciationScore}, Phonemes count: ${phonemes.length}`);
 
-          // 返回前端期待的格式
+          // 返回前端期待的格式 (V68 回归锁定版)
           res.json({
             success: true,
             pronunciation: pronunciationScore,
+            nbest: nBest, // 保留以支持 V65+ 渲染器
             phonemes: phonemes.map(p => ({
               Phoneme: p.Phoneme,
               AccuracyScore: p.PronunciationAssessment.AccuracyScore
