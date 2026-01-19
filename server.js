@@ -254,8 +254,61 @@ app.post("/assess", upload.single('audio'), async (req, res) => {
 });
 
 // ===== 启动 =====
+
+// ===== Android Anki Feedback Relay (Session Store) =====
+// Simple in-memory store: { session_id: { status: 'pending'|'done', score: 0, timestamp: Date } }
+const sessionStore = new Map();
+
+// Auto-cleanup every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, data] of sessionStore.entries()) {
+    if (now - data.timestamp > 10 * 60 * 1000) { // 10 mins TTL
+      sessionStore.delete(id);
+    }
+  }
+}, 60000);
+
+// API: Initialize Session (Optional, mostly for tracking)
+app.post("/api/init_session", (req, res) => {
+  const { session_id } = req.body;
+  if (session_id) {
+    sessionStore.set(session_id, { status: "pending", score: 0, timestamp: Date.now() });
+    res.json({ success: true });
+  } else {
+    res.status(400).json({ error: "Missing session_id" });
+  }
+});
+
+// API: Report Result (Called by External Browser)
+app.post("/api/report_result", (req, res) => {
+  const { session_id, score } = req.body;
+  if (session_id && typeof score === 'number') {
+    sessionStore.set(session_id, { status: "done", score: score, timestamp: Date.now() });
+    console.log(`[RELAY] Result received for ${session_id}: ${score}`);
+    res.json({ success: true });
+  } else {
+    res.status(400).json({ error: "Invalid data" });
+  }
+});
+
+// API: Check Status (Called by AnkiDroid)
+app.get("/api/check_status", (req, res) => {
+  const { session_id } = req.query;
+  if (!session_id) return res.status(400).json({ error: "Missing session_id" });
+
+  const data = sessionStore.get(session_id);
+  if (data && data.status === "done") {
+    res.json({ status: "done", score: data.score });
+    // Optional: Delete after read (one-time consumption) or keep for retry?
+    // Let's keep it for a bit in case of network retry
+  } else {
+    res.json({ status: "pending" });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log(`Server running on port ${PORT}`);
   const key = process.env.AZURE_KEY;
   const region = process.env.AZURE_REGION;
   console.log("Azure Region:", region || "(missing)");
