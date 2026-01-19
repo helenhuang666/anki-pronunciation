@@ -481,11 +481,9 @@
       }
       if (hintBtn) {
         hintBtn.style.display = "inline-block";
-        hintBtn.onclick = async () => {
+        hintBtn.onclick = () => {
           hintBtn.style.display = "none";
           if (ipaDisplayEl) ipaDisplayEl.style.display = "block";
-          // V83: 预激活音频上下文，消除录音延迟
-          await initAudioContext();
         };
       }
     } else {
@@ -567,25 +565,9 @@
 
     /* ===== State ===== */
     let recording = false;
-    let audioContext = null; // 全局单例
-    let recStream = null;
-    let recProcessor = null;
+    let audioContext = null;
     let recBuffer = [];
     let lastRecordedBlob = null;
-
-    async function initAudioContext() {
-      if (audioContext) {
-        if (audioContext.state === 'suspended') await audioContext.resume();
-        return;
-      }
-      try {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        audioContext = new Ctx(); // 自动适配硬件频率
-        logDebug("AudioContext 单例已建立, Rate: " + audioContext.sampleRate);
-      } catch (e) {
-        logDebug("Ctx 建立失败: " + e.message, "err");
-      }
-    }
 
     const recordBtn = document.getElementById("recordBtn");
     const playbackBtn = document.getElementById("playbackBtn");
@@ -941,54 +923,47 @@
       };
     }
     async function startRecord() {
-      if (recording) return;
-      logDebug("正在启动录音...");
+      // 显式清理上一次回放状态
+      if (lastRecordedBlob) {
+        logDebug("清理旧录音缓存...");
+      }
 
+      logDebug("正在请求麦克风 (16kHz PCM 直接采样)...");
       try {
-        await initAudioContext();
-        if (!recStream) {
-          recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // 重要：显式创建并 resume AudioContext
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        audioContext = new Ctx({ sampleRate: 16000 });
+        if (audioContext.state === 'suspended') await audioContext.resume();
 
-        const input = audioContext.createMediaStreamSource(recStream);
-        recProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-        recBuffer = [];
+        const input = audioContext.createMediaStreamSource(stream);
+        // 4096 对于 16k 采样率约 250ms 一次回调
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        recBuffer = []; // 显式清空，确保 V82 回放全新
 
-        recProcessor.onaudioprocess = e => {
+        processor.onaudioprocess = e => {
           if (recording) {
             const channelData = e.inputBuffer.getChannelData(0);
             recBuffer.push(new Float32Array(channelData));
+            logDebug(`[Live] 采集音频分片: ${channelData.length} samples`);
           }
         };
 
-        input.connect(recProcessor);
-        recProcessor.connect(audioContext.destination);
+        input.connect(processor);
+        processor.connect(audioContext.destination);
 
         recording = true;
         recordBtn.classList.add("recording");
         statusLabel.innerText = "正在录制...";
-        if (recording) {
-          const channelData = e.inputBuffer.getChannelData(0);
-          recBuffer.push(new Float32Array(channelData));
-          logDebug(`[Live] 采集音频分片: ${channelData.length} samples`);
-        }
-      };
+        logDebug("PCM 直接采集已启动", "ok");
 
-      input.connect(processor);
-      processor.connect(audioContext.destination);
-
-      recording = true;
-      recordBtn.classList.add("recording");
-      statusLabel.innerText = "正在录制...";
-      logDebug("PCM 直接采集已启动", "ok");
-
-      window.recStream = stream;
-      window.recProcessor = processor;
-      window.recInput = input;
-    } catch (e) {
-      logDebug(`初始化失败: ${e.message}`, "err");
-      alert("无法启动录音: " + e.message);
-    }
+        window.recStream = stream;
+        window.recProcessor = processor;
+        window.recInput = input;
+      } catch (e) {
+        logDebug(`初始化失败: ${e.message}`, "err");
+        alert("无法启动录音: " + e.message);
+      }
     }
 
     function stopRecord() {
@@ -998,10 +973,9 @@
       recording = false;
       recordBtn.classList.remove("recording");
 
-      if (recProcessor) recProcessor.disconnect();
-      // 这里不 disconnect recInput 以保持连接，也不 stop stream 除非确定不再用
-      // 但为了省电和权限状态，我们温和释放
-      // recStream.getTracks().forEach(t => t.stop()); recStream = null; 
+      if (window.recProcessor) window.recProcessor.disconnect();
+      if (window.recInput) window.recInput.disconnect();
+      if (window.recStream) window.recStream.getTracks().forEach(t => t.stop());
 
       // 合并 PCM 数据并生成 WAV
       const totalLen = recBuffer.reduce((acc, b) => acc + b.length, 0);
@@ -1025,8 +999,6 @@
     }
 
     function encodeWAVFromFloat(samples) {
-      // V83: 基于 audioContext.sampleRate 动态生成的 WAV 头部
-      const sampleRate = audioContext ? audioContext.sampleRate : 16000;
       const buffer = new ArrayBuffer(44 + samples.length * 2);
       const view = new DataView(buffer);
       writeString(view, 0, 'RIFF');
@@ -1036,8 +1008,8 @@
       view.setUint32(16, 16, true);
       view.setUint16(20, 1, true); // PCM
       view.setUint16(22, 1, true); // Mono
-      view.setUint32(24, sampleRate, true);
-      view.setUint32(28, sampleRate * 2, true);
+      view.setUint32(24, 16000, true);
+      view.setUint32(28, 32000, true);
       view.setUint16(32, 2, true);
       view.setUint16(34, 16, true);
       writeString(view, 36, 'data');
