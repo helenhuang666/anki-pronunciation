@@ -12,7 +12,6 @@
       margin: 0;
       padding: 0;
       background-color: transparent;
-      /* 背景透明 */
       height: 100dvh;
       display: flex;
       flex-direction: column;
@@ -48,14 +47,10 @@
       align-items: center;
       padding: 20px;
       min-height: 400px;
-      /* 确保 iframe 中有最小高度 */
       overflow-y: auto;
-      /* 允许滚动 */
     }
 
-    /* ... omitted styles ... */
-
-    /* ===== Buttons ===== */
+    /* ===== Buttons (V81 Capsule Layout) ===== */
     .playback-btn {
       flex: 1;
       height: 48px;
@@ -80,6 +75,7 @@
     }
 
     .playback-btn:active {
+      transform: scale(0.95);
       opacity: 0.7;
     }
 
@@ -92,7 +88,6 @@
       margin-top: 20px;
       margin-bottom: 4px;
       display: none;
-      /* 默认由 JS 控制环境显隐 */
     }
 
     #target-ipa {
@@ -126,22 +121,18 @@
 
     .total-score {
       font-size: 51px;
-      /* 64px * 0.8 */
       font-weight: 500;
       color: #3A66B8;
-      /* 新锐蓝色 */
       line-height: 1;
     }
 
     .score-unit {
       font-size: 19px;
-      /* 24px * 0.8 */
       margin-left: 4px;
     }
 
     .stars {
       font-size: 22px;
-      /* 28px * 0.8 */
       color: #3A66B8;
       margin-top: 12px;
       margin-bottom: 4px;
@@ -159,7 +150,6 @@
       gap: 5px;
       margin-bottom: 20px;
       flex-wrap: wrap;
-      /* 允许换行 */
       width: 100%;
       padding: 0 10px;
       box-sizing: border-box;
@@ -170,13 +160,9 @@
       flex-direction: column;
       align-items: center;
       min-width: 26px;
-      /* 加大 5% (约 25px -> 26px) */
       max-width: 53px;
-      /* 加大 5% (约 50px -> 53px) */
       width: clamp(26px, 5.3vw, 53px);
-      /* 自适应宽度 */
       flex-shrink: 1;
-      /* 允许缩小 */
       background-color: #e1f5fe;
       border-top-left-radius: 18px;
       border-top-right-radius: 18px;
@@ -194,17 +180,14 @@
 
     .bar-letter {
       font-size: clamp(13px, 2.7vw, 19px);
-      /* 加大 5% (约 12px-18px -> 13px-19px) */
       color: #3A66B8;
       margin-bottom: 4px;
       font-weight: 500;
       word-break: break-all;
-      /* 允许字母换行 */
     }
 
     .bar-ipa {
       font-size: clamp(12px, 2.1vw, 15px);
-      /* 加大 5% (约 11px-14px -> 12px-15px) */
       color: #555;
       margin-bottom: 10px;
       font-family: "Lucida Sans Unicode", "Arial Unicode MS", sans-serif;
@@ -219,25 +202,19 @@
       font-weight: 600;
       border-radius: 4px;
       margin-top: auto;
-      /* Push to bottom */
     }
 
-    /* Colors based on score (Semantics kept red/yellow/green for clarity) */
     .bg-good {
       background-color: #81c784;
     }
 
-    /* Green */
     .bg-fair {
       background-color: #ffb74d;
     }
 
-    /* Orange */
     .bg-poor {
       background-color: #e57373;
     }
-
-    /* Red */
 
     /* ===== Bottom Controls ===== */
     .controls {
@@ -249,7 +226,6 @@
       padding-bottom: max(50px, env(safe-area-inset-bottom));
       flex-shrink: 0;
       transform: translateY(0%);
-      /* 下移 10% (从 -10% 回复) */
     }
 
     .btn-row {
@@ -265,20 +241,16 @@
       width: 90%;
       background: #f1f8ff;
       padding: 8px;
-      /* 内边距缩小 50% (原 16px) */
       border-radius: 8px;
       font-size: 14px;
       line-height: 1.8;
       color: #01579b;
       margin: 10px auto;
-      /* 边距缩小 50% (原 20px) */
       border: 1px solid #3A66B8;
       text-align: center;
       display: none;
       box-shadow: 0 4px 12px rgba(58, 102, 184, 0.1);
     }
-
-
 
     .mic-button {
       flex: 1;
@@ -307,7 +279,6 @@
 
     .mic-button.recording {
       background-color: #ff5252;
-      /* Red when recording */
       box-shadow: 0 0 0 6px rgba(255, 82, 82, 0.3);
       animation: pulse 1.5s infinite;
     }
@@ -338,10 +309,7 @@
 
 <body>
   <!-- 核心展示容器 -->
-
   <div class="container">
-
-
     <!-- Header Word & IPA -->
     <div id="target-word" style="font-size: 24px;">汉译加载中...</div>
     <button id="web-hint-btn" class="hint-btn">提示</button>
@@ -385,80 +353,27 @@
   </div>
 
   <script>
-    // ===== 顶级调试工具 =====
-    function logToScreen(msg, type = '') {
-      // 日志功能已禁用
-    }
+    // ===== V85: 独立版 index.html (Android/PC 跳转落地页) =====
 
-    // 初始化自检
-    logToScreen("🚀 调试终端激活...");
-    logToScreen("📍 当前源: " + window.location.origin);
-    logToScreen("📜 参数: " + location.search.substring(0, 100));
-
-    // 握手信号：告诉父窗口，我准备好了！
-    function signalReady() {
-      logToScreen("📡 发送 IFRAME_READY 握手...");
-      window.parent.postMessage({ type: 'IFRAME_READY' }, '*');
-    }
-
-    // 延迟 300ms 确保脚本解析完
-    signalReady();
-
+    function logToScreen(msg) { /* No-op */ }
     function logDebug(msg) { console.log(msg); }
 
     let PhonemeTips = {};
-    // 兼容性加载
     fetch("./phoneme_tips.js").then(r => r.text()).then(txt => {
-      // 简单解析 exports
       const match = txt.match(/PhonemeTips\s*=\s*({[\s\S]*});/);
       if (match) PhonemeTips = eval('(' + match[1] + ')');
-
-      // V77: 补全音位变体提示 (根据用户最新指令精修)
-      const allophoneExtensions = {
+      const extensions = {
         "l_light": "【清晰 l 】出现在词首或元音前。",
         "l_dark": "【暗 l】出现在词尾或辅音后。",
         "r_initial": "【卷舌 r 】出现在词首或重读位置。",
         "r_final": "【弱化 r】出现在词尾或元音后。"
       };
-      PhonemeTips = { ...PhonemeTips, ...allophoneExtensions };
-
-      logToScreen("✅ 音标提示库已加载并补全");
-    }).catch(e => logToScreen("❌ 提示库加载失败", "err"));
+      PhonemeTips = { ...PhonemeTips, ...extensions };
+    }).catch(e => console.error("Tips load failed", e));
 
     const params = new URLSearchParams(window.location.search);
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isAnkiPC = /QtWebEngine/i.test(navigator.userAgent);
-    const isExternalControl = params.get('ext_record') === '1';
-
-    // V70: 强制外部控制逻辑
-    if (isExternalControl) {
-      const recordingControls = document.getElementById('recording-controls');
-      const statusEl = document.getElementById('status');
-      const controlsSection = document.getElementById('controls-section');
-      const stdBtnInIframe = document.getElementById('stdWordBtn');
-
-      if (recordingControls) recordingControls.style.display = 'none';
-      if (statusEl) statusEl.style.display = 'none';
-      if (stdBtnInIframe) stdBtnInIframe.style.display = 'none';
-      if (controlsSection) {
-        controlsSection.style.display = 'none';
-        controlsSection.style.visibility = 'hidden';
-      }
-
-      const style = document.createElement('style');
-      style.textContent = `
-        .controls, .debug-log, #recording-controls, #status, #stdWordBtn { 
-          display: none !important; 
-          visibility: hidden !important; 
-          height: 0 !important; 
-          min-height: 0 !important;
-          padding: 0 !important; 
-          margin: 0 !important; 
-          overflow: hidden !important;
-        }
-      `;
-      document.head.appendChild(style);
-    }
 
     if (isIOS) document.body.classList.add("ios-mode");
     if (isAnkiPC) document.body.classList.add("pc-mode");
@@ -473,101 +388,25 @@
     const ipaDisplayEl = document.getElementById("target-ipa");
     const hintBtn = document.getElementById("web-hint-btn");
 
-    if (!isExternalControl) {
-      // 网页模式：显示汉译，隐藏音标由按钮控制
-      if (wordDisplayEl) {
-        wordDisplayEl.innerText = targetTrans;
-        wordDisplayEl.style.display = "block";
-      }
-      if (hintBtn) {
-        hintBtn.style.display = "inline-block";
-        hintBtn.onclick = async () => {
-          hintBtn.style.display = "none";
-          if (ipaDisplayEl) ipaDisplayEl.style.display = "block";
-          // V83: 预激活音频上下文，消除录音延迟
-          await initAudioContext();
-        };
-      }
-    } else {
-      // Anki 模式：全隐藏
-      if (wordDisplayEl) wordDisplayEl.style.display = "none";
-      if (hintBtn) hintBtn.style.display = "none";
-      if (ipaDisplayEl) ipaDisplayEl.style.display = "none";
+    // 网页模式逻辑 (因为 index.html 必定是跳转出来的，所以总是 Non-ExternalControl)
+    if (wordDisplayEl) {
+      wordDisplayEl.innerText = targetTrans;
+      wordDisplayEl.style.display = "block";
     }
-    let userAudio = decodeURIComponent(params.get("audio") || params.get("audio_file") || params.get("USAudio") || params.get("usaudio") || "");
-
-    // ===== 🛠️ 关键修复：解析音频 HTML 标签 =====
-    let isHtmlTag = false;
-    let audioSrcFilename = "";
-    if (userAudio && userAudio.includes("<audio")) {
-      isHtmlTag = true;
-      const srcMatch = userAudio.match(/src=["']([^"']+)["']/);
-      if (srcMatch && srcMatch[1]) {
-        audioSrcFilename = srcMatch[1];
-        userAudio = audioSrcFilename; // 提取文件名作为最终路径
-      }
-    }
-
-    // 立即显示单词
-    const wordEl = document.getElementById("target-word");
-    const ipaEl = document.getElementById("target-ipa");
-    if (wordEl) wordEl.innerText = targetWord;
-    // 修复：确保初始化时不产生双斜杠
-    if (ipaEl) {
-      if (userIpa) {
-        // 强力去重：移除所有已有的斜杠和括号，重新统一包裹
-        const pureIpa = userIpa.replace(/[\/\[\]\s]+/g, ' ').trim();
-        ipaEl.innerText = `/${pureIpa}/`;
-        ipaEl.style.color = "#3A66B8";
-      } else {
-        ipaEl.innerText = "";
-      }
-    }
-
-    // ===== 音标工具：Arpabet 强制转标准 IPA =====
-    const ARPABET_TO_IPA = {
-      "ae": "æ", "ax": "ə", "ah": "ʌ", "aa": "ɑ", "ao": "ɔ", "ih": "ɪ", "eh": "e", "iy": "i", "uh": "ʊ", "uw": "u",
-      "er": "ɜːr", "axr": "ər", "ey": "eɪ", "ay": "aɪ", "oy": "ɔɪ", "aw": "aʊ", "ow": "oʊ",
-      "p": "p", "b": "b", "t": "t", "d": "d", "k": "k", "g": "g", "f": "f", "v": "v", "th": "θ", "dh": "ð",
-      "s": "s", "z": "z", "sh": "ʃ", "zh": "ʒ", "ch": "tʃ", "jh": "dʒ", "m": "m", "n": "n", "ng": "ŋ", "l": "l", "r": "r", "w": "w", "y": "j", "hh": "h"
-    };
-
-    const VOWELS = ["ae", "ax", "ah", "aa", "ao", "ih", "eh", "iy", "uh", "uw", "er", "axr", "ey", "ay", "oy", "aw", "ow"];
-
-    function getStandardIpa(pObj, index, allPhonemes) {
-      if (!pObj) return { display: "", tts: "" };
-      if (pObj.IPA) return { display: pObj.IPA, tts: pObj.IPA };
-      const code = (pObj.Phoneme || "").toLowerCase();
-
-      const phArr = allPhonemes || [];
-      const idx = (index !== undefined) ? index : -1;
-      const stdIpa = ARPABET_TO_IPA[code] || code;
-
-      // V75: 双字段返回逻辑 - display 用于视觉，tts 用于发音
-      if (code === "l") {
-        const nextPh = (idx >= 0 && idx + 1 < phArr.length) ? phArr[idx + 1] : null;
-        const isFollowedByVowel = nextPh && VOWELS.includes(nextPh.Phoneme.toLowerCase());
-        return {
-          display: "l",
-          tts: (isFollowedByVowel || idx === 0) ? "l_light" : "l_dark"
-        };
-      }
-
-      if (code === "r") {
-        const prevPh = (idx >= 1) ? phArr[idx - 1] : null;
-        const isPrecededByVowel = prevPh && VOWELS.includes(prevPh.Phoneme.toLowerCase());
-        return {
-          display: "r",
-          tts: (isPrecededByVowel || idx === phArr.length - 1) ? "r_final" : "r_initial"
-        };
-      }
-
-      return { display: stdIpa, tts: stdIpa };
+    if (hintBtn) {
+      hintBtn.style.display = "inline-block";
+      hintBtn.onclick = async () => {
+        hintBtn.style.display = "none";
+        if (ipaDisplayEl) {
+          ipaDisplayEl.innerText = `/${userIpa.replace(/\//g, '')}/`; // 纯净显示
+          ipaDisplayEl.style.display = "block";
+        }
+      };
     }
 
     /* ===== State ===== */
     let recording = false;
-    let audioContext = null; // 全局单例
+    let audioContext = null;
     let recStream = null;
     let recProcessor = null;
     let recBuffer = [];
@@ -582,320 +421,35 @@
         const Ctx = window.AudioContext || window.webkitAudioContext;
         // V85: 强制 16000Hz 以匹配 Azure 模型，修复 0 分问题
         audioContext = new Ctx({ sampleRate: 16000 });
-        logDebug("AudioContext 单例已建立, Rate: " + audioContext.sampleRate);
+        console.log("AudioContext SampleRate:", audioContext.sampleRate);
       } catch (e) {
-        logDebug("Ctx 建立失败: " + e.message, "err");
+        console.error("Ctx init failed", e);
       }
     }
 
     const recordBtn = document.getElementById("recordBtn");
     const playbackBtn = document.getElementById("playbackBtn");
-    const stdWordBtn = document.getElementById("stdWordBtn");
     const statusLabel = document.getElementById("status");
-    const barsContainer = document.getElementById("bars-container");
-    const mainScoreEl = document.getElementById("main-score");
-    const scoreHeader = document.getElementById("score-header");
-    const starsEl = document.getElementById("stars");
+
+    /* ===== Render Logic ===== */
     const tipBox = document.getElementById("tip-box");
 
-    // ===== 英语拼写规则引擎 (核心优化) =====
-    const DIGRAPHS = [
-      // 元音组合
-      "ai", "ay", "ea", "ee", "ei", "ey", "ie", "oa", "oe", "oi", "oo", "ou", "oy", "ui", "au", "aw",
-      // 辅音组合
-      "ch", "sh", "th", "wh", "ph", "ng", "nk", "ck", "kn", "wr", "gh", "gu",
-      "tr", "dr", "ts", "ds",
-      // 常见双写
-      "pp", "tt", "bb", "dd", "ff", "gg", "mm", "nn", "rr", "ss", "ll", "zz", "cc"
-    ];
-    // 注意：eau 不再作为 TRIGRAPH，需要特殊处理
-    const TRIGRAPHS = ["ght", "tch", "dge", "iou"];
-
-    /* ===== 高精全能型对齐引擎 (Silent Absorber + Multi-Phoneme Merge) ===== */
-    function alignLettersToPhonemes(word, phonemes) {
-      const letters = word.toLowerCase();
-      const pCount = phonemes.length;
-      let letterIndex = 0;
-
-      const phObjects = phonemes.map((p, idx) => {
-        const info = getStandardIpa(p, idx, phonemes);
-        return {
-          display: info.display,
-          tts: info.tts,
-          score: p.PronunciationAssessment?.AccuracyScore || 0,
-          raw: p
-        };
-      });
-
-      const finalGroups = [];
-
-      for (let i = 0; i < pCount; i++) {
-        let curr = phObjects[i];
-
-        // 0. 跳过非字母字符
-        while (letterIndex < letters.length && !/[a-z]/.test(letters[letterIndex])) {
-          letterIndex++;
+    function getStandardIpa(word, rawPhoneme, idx, arr) {
+      let displayPh = rawPhoneme;
+      let ttsIpa = rawPhoneme;
+      // V84 简单策略：仅映射核心音位
+      if (word.endsWith('le') || word.endsWith('al') || word.endsWith('el')) {
+        if (rawPhoneme.includes('l')) {
+          displayPh = 'l_dark';
+          ttsIpa = 'l_Dark';
         }
-
-        let curChar = (letterIndex < letters.length) ? letters[letterIndex] : "";
-        let groupLetters = curChar;
-        let groupPhonemes = [curr.raw];
-        let displayIpa = curr.display;
-        let ttsIpa = curr.tts;
-        let totalScore = curr.score;
-        let phonemeCount = 1;
-
-        // 1. 三字母/多音素合并逻辑
-        let nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
-
-        // 场景 A: x 字母处理 (x -> /ks/ 或 /gz/)
-        if (curChar === 'x' && (curr.display === 'k' || curr.display === 'g') && nextPh && (nextPh.display === 's' || nextPh.display === 'z')) {
-          groupPhonemes.push(nextPh.raw);
-          displayIpa += nextPh.display;
-          ttsIpa += " " + nextPh.tts;
-          totalScore = (totalScore + nextPh.score) / 2;
-          i++;
-          nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
-        }
-
-        // 场景 B: 多音素合并触发器 (如字母 'u' 对应 /j/ + /u:/)
-        else if ((curChar === 'u') && (curr.display === 'j') && nextPh && (nextPh.display === 'u' || nextPh.display.startsWith('u') || nextPh.display === 'ʊ')) {
-          groupPhonemes.push(nextPh.raw);
-          displayIpa += nextPh.display;
-          ttsIpa += " " + nextPh.tts;
-          totalScore = (totalScore + nextPh.score) / 2;
-          i++;
-          nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
-        }
-
-        // 场景 C: 特殊 le 结尾合并为 (ə)l
-        const isLeSuffix = letters.endsWith('le') && (letterIndex >= letters.length - 2);
-        if (isLeSuffix && curr.display === "ə" && nextPh && nextPh.display === "l") {
-          groupPhonemes.push(nextPh.raw);
-          displayIpa = `(${curr.display})${nextPh.display}`;
-          ttsIpa = `${curr.tts} ${nextPh.tts}`;
-          totalScore = (totalScore + nextPh.score) / 2;
-          i++;
-          nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
-        }
-
-        // 场景 D: 辅音簇合并 (tr, dr, ts, ds)
-        const combo = (letterIndex + 1 < letters.length) ? letters.substr(letterIndex, 2) : "";
-        let isCluster = false;
-        if (combo === "tr" && curr.display === "t" && nextPh && nextPh.display === "r") isCluster = true;
-        else if (combo === "dr" && curr.display === "d" && nextPh && nextPh.display === "r") isCluster = true;
-        else if (combo === "ts" && curr.display === "t" && nextPh && (nextPh.display === "s" || nextPh.display === "z")) isCluster = true;
-        else if (combo === "ds" && curr.display === "d" && nextPh && (nextPh.display === "z" || nextPh.display === "s")) isCluster = true;
-
-        if (isCluster) {
-          groupPhonemes.push(nextPh.raw);
-          displayIpa += nextPh.display;
-          ttsIpa += " " + nextPh.tts;
-          totalScore = (totalScore + nextPh.score) / 2;
-          i++;
-          nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
-        }
-
-        // 2. 字母切割启发式逻辑 (Digraph/Trigraph)
-        let chunkSize = 1;
-        if (letterIndex + 2 < letters.length && TRIGRAPHS.includes(letters.substr(letterIndex, 3))) chunkSize = 3;
-        else if (letterIndex + 1 < letters.length && DIGRAPHS.includes(letters.substr(letterIndex, 2))) chunkSize = 2;
-
-        // 特殊处理：如果已经识别为辅音簇 combo 且刚好在此处，强行扩充 chunkSize
-        if (isCluster) chunkSize = 2;
-        // 特殊处理：如果 le 被判定为 Suffix 且刚好在此处，强行扩充 chunkSize
-        else if (isLeSuffix) chunkSize = letters.length - letterIndex;
-
-        groupLetters = word.substr(letterIndex, chunkSize);
-        letterIndex += chunkSize;
-
-        // 3. 静音字母吸收 (Silent Letter Absorber)
-        // 核心逻辑：如果后面跟着不发音的字母（如 gh, 中间的 e, 结尾的 e），且它们没有对应的音素，则由当前组吸收
-        while (letterIndex < letters.length) {
-          let peekChar = letters[letterIndex];
-
-          // 如果是空格或非字母，直接吸收
-          if (!/[a-z]/.test(peekChar)) {
-            groupLetters += word[letterIndex];
-            letterIndex++;
-            continue;
-          }
-
-          // 特殊静音组合判定：
-          // 1. 词尾不发音 e
-          // 2. 元音后的 gh (如果下一个音素不是 f (laugh) 或 g)
-          // 3. 词中被省略的元音 (如 interesting 中的 e)
-
-          let remainingPh = pCount - (i + 1);
-          let nextRealPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
-
-          let isSilentCandidate = false;
-
-          // 场景 A: 结尾 e
-          if (peekChar === 'e' && remainingPh === 0) isSilentCandidate = true;
-
-          // 场景 B: 辅音组合中的静音件 (如 gh)
-          if (peekChar === 'g' && letters[letterIndex + 1] === 'h') {
-            // 如果下一个音素不是 f (laugh) 或 g，则 gh 是静音的
-            if (!nextRealPh || (!nextRealPh.display.includes('f') && !nextRealPh.display.includes('g'))) {
-              groupLetters += word.substr(letterIndex, 2);
-              letterIndex += 2;
-              continue;
-            }
-          }
-
-          // 场景 C: 词中的弱读/不发音元音 (interesting)
-          // 如果当前是元音字母，且原本应该对应音素但现在剩余音素明显不足以匹配后续字母
-          if ("aeiou".includes(peekChar) && remainingPh > 0) {
-            // 启发式：如果后续字母能完美匹配下一个音素，则当前元音被视为静音吸收
-            let nextLetter = letters[letterIndex + 1];
-            if (nextLetter && nextRealPh && nextRealPh.display.startsWith(nextLetter)) {
-              isSilentCandidate = true;
-            }
-          }
-
-          if (isSilentCandidate) {
-            groupLetters += word[letterIndex];
-            letterIndex++;
-          } else {
-            break; // 遇到真正的发音字母，停止吸收
-          }
-        }
-
-        finalGroups.push({
-          letters: groupLetters,
-          displayPh: displayIpa,
-          ttsIpa: ttsIpa,
-          score: totalScore,
-          // 注入位置元数据
-          isInitial: (i === 0 || (i === 1 && phonemeCount === 2)),
-          isFinal: (i >= pCount - 1),
-          rawPhoneme: curr.raw.Phoneme.toLowerCase()
-        });
       }
-
-      // 最后收尾：吸收末尾残留物
-      if (letterIndex < letters.length) {
-        finalGroups[finalGroups.length - 1].letters += word.substr(letterIndex);
-      }
-
-      return finalGroups;
-    }
-
-    /* ===== Render UI ===== */
-    function renderResult(nbest) {
-      scoreHeader.style.opacity = "1";
-      barsContainer.style.display = "flex";
-      const acc = Math.round(nbest.PronunciationAssessment.AccuracyScore || 0);
-      mainScoreEl.innerHTML = `${acc}<span class="score-unit">分</span>`;
-
-      const starCount = Math.round(acc / 20);
-      let starHtml = "";
-      for (let i = 0; i < 5; i++) starHtml += i < starCount ? "★" : "<span class='gray'>☆</span>";
-      starsEl.innerHTML = starHtml;
-
-      const targetPhonemes = [];
-      const displayPhonemesList = [];
-      if (nbest.Words && nbest.Words.length > 0) {
-        nbest.Words.forEach(w => {
-          if (w.Phonemes) {
-            targetPhonemes.push(...w.Phonemes);
-            // V74: 修复调用链，传递索引和完整数组
-            w.Phonemes.forEach((p, idx, arr) => {
-              const info = getStandardIpa(p, idx, arr);
-              displayPhonemesList.push(info.display);
-            });
-          }
-        });
-      } else {
-        logToScreen("ℹ️ 没有音素详情数据可显示");
-      }
-
-      console.log("[DATA] Azure raw phonemes:", targetPhonemes);
-
-      // 如果有音标元素，虽然隐藏了也同步更新
-      if (ipaEl) {
-        const cleanList = displayPhonemesList.map(p => p.replace(/[\/\[\]\s]+/g, ''));
-        ipaEl.innerText = `/${cleanList.join(' ')}/`;
-      }
-
-      try {
-        let alignedData = alignLettersToPhonemes(targetWord, targetPhonemes);
-
-        barsContainer.innerHTML = "";
-        alignedData.forEach(group => {
-          const div = document.createElement("div");
-          div.className = "bar-group";
-          div.style.marginBottom = "10px"; // 换行后的间距
-          div.dataset.ph = group.rawPhoneme;
-          div.dataset.isInitial = group.isInitial;
-          div.dataset.isFinal = group.isFinal;
-          div.onclick = () => playPhoneme(group.ttsIpa, group.displayPh, div.dataset);
-
-          const score = Math.round(group.score);
-          let colorClass = score >= 80 ? "bg-good" : (score >= 60 ? "bg-fair" : "bg-poor");
-
-          div.innerHTML = `
-            <div class="bar-letter">${group.letters}</div>
-            <div class="bar-ipa">/${group.displayPh}/</div>
-            <div class="bar-score ${colorClass}">${score}</div>
-          `;
-          barsContainer.appendChild(div);
-        });
-      } catch (err) {
-        console.error("Render Error:", err);
-      }
-    }
-
-    /* ===== TTS & Tips ===== */
-    async function playPhoneme(ttsIpa, displayPhoneme, meta = {}) {
-      // V77: 录音文件 Key 提取逻辑
-      // V78: 特殊处理 (ə)l -> l_dark
-      let tipKey = ttsIpa.split(' ')[0].trim();
-      const cleanDisplay = displayPhoneme.replace(/[()]/g, '').trim();
-
-      if (displayPhoneme.includes("(ə)l") || displayPhoneme === "əl") {
-        tipKey = "l_dark";
-      }
-
-      logDebug(`[AUDIO] 尝试播放变体 Key: ${tipKey}, 显示词: ${cleanDisplay}`);
-
-      // 1. 显示中文提示 (变体优先)
-      const tip = PhonemeTips[tipKey] || PhonemeTips[cleanDisplay] || PhonemeTips[cleanDisplay.split(' ')[0]];
-      if (tip) {
-        tipBox.style.display = "block";
-        tipBox.innerText = `/${displayPhoneme}/ : ${tip}`;
-      }
-
-      // 2. 播放参考音频
-      const audioUrl = `/audio/phoneme/${tipKey}.mp3`;
-      const audio = new Audio(audioUrl);
-
-      audio.onerror = async () => {
-        logToScreen(`ℹ️ 静态音频 ${tipKey}.mp3 未命中，回退到 TTS`);
-        // 对 ttsIpa 进行 IPA 降级映射 (例如 l_light -> l)，防止 Azure SSML 报错
-        const fallbackIpa = ttsIpa
-          .replace(/l_(light|dark)/g, 'l')
-          .replace(/r_(initial|final)/g, 'r');
-        await playPhonemeTTS(fallbackIpa);
-      };
-
-      try {
-        await audio.play();
-      } catch (err) {
-        console.error("Audio playback error", err);
-      }
+      return { display: displayPh, tts: ttsIpa };
     }
 
     async function playPhonemeTTS(ttsIpa) {
       try {
-        const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-          <voice name="en-US-ChristopherNeural">
-            <prosody volume="+30.00%">
-              <phoneme alphabet="ipa" ph="${ttsIpa}"> phoneme </phoneme>
-            </prosody>
-          </voice>
-        </speak>`;
+        const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US"><voice name="en-US-ChristopherNeural"><prosody volume="+30.00%"><phoneme alphabet="ipa" ph="${ttsIpa}"> phoneme </phoneme></prosody></voice></speak>`;
         const res = await fetch(window.location.origin + "/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -906,34 +460,80 @@
           const audio = new Audio(URL.createObjectURL(blob));
           audio.play();
         }
-      } catch (e) { console.error("TTS Backup Error", e); }
+      } catch (e) { console.error("TTS Error", e); }
     }
 
-    /* ===== Recording Logic (Modern & Resampled) ===== */
-    // 适配 PC 端 Anki: 强化识别
-    const isWebView = /Anki|WebView|Android.*(wv|.0.0.0)|QtWebEngine/i.test(navigator.userAgent);
+    window.playPhoneme = async (ttsIpa, displayPhoneme) => {
+      let cleanDisplay = displayPhoneme.replace(/_initial|_final|_light|_dark/g, '').replace('l_dark', 'l');
+      // Tip Logic
+      let tipKey = displayPhoneme;
+      if (tipKey === 'l') tipKey = 'l_light';
 
-    // 🔥 外部录音模式：完全禁用录音按钮
-    if (!isExternalControl && recordBtn) {
+      const tip = PhonemeTips[tipKey] || PhonemeTips[cleanDisplay];
+      if (tip && tipBox) {
+        tipBox.style.display = 'block';
+        tipBox.innerText = `/${displayPhoneme}/ : ${tip}`;
+      }
+
+      // Play Logic
+      await playPhonemeTTS(ttsIpa);
+    }
+
+    function renderResult(nbest) {
+      if (!nbest || !nbest.Words || nbest.Words.length === 0) return;
+
+      const barsContainer = document.getElementById("bars-container");
+      barsContainer.innerHTML = "";
+
+      const wordObj = nbest.Words[0];
+      const mainScore = nbest.PronunciationAssessment ? nbest.PronunciationAssessment.AccuracyScore : 0;
+
+      // Update Score Header
+      const scoreHeader = document.getElementById("score-header");
+      const mainScoreEl = document.getElementById("main-score");
+      const starsEl = document.getElementById("stars");
+
+      scoreHeader.style.opacity = 1;
+      mainScoreEl.innerHTML = Math.round(mainScore) + '<span class="score-unit">分</span>';
+
+      let stars = "★★★★★";
+      if (mainScore < 20) stars = "<span class='gray'>★★★★★</span>";
+      else if (mainScore < 40) stars = "★<span class='gray'>★★★★</span>";
+      else if (mainScore < 60) stars = "★★<span class='gray'>★★★</span>";
+      else if (mainScore < 80) stars = "★★★<span class='gray'>★★</span>";
+      else if (mainScore < 90) stars = "★★★★<span class='gray'>★</span>";
+      else stars = "★★★★★";
+      starsEl.innerHTML = stars;
+
+      // Render Bars
+      if (wordObj.Phonemes) {
+        wordObj.Phonemes.forEach((ph, i) => {
+          const raw = ph.Phoneme;
+          const score = ph.PronunciationAssessment.AccuracyScore;
+          const div = document.createElement("div");
+          div.className = "bar-group";
+          div.style.marginBottom = "10px";
+
+          // 颜色
+          let colorClass = "bg-poor";
+          if (score >= 80) colorClass = "bg-good";
+          else if (score >= 60) colorClass = "bg-fair";
+
+          div.innerHTML = `
+               <div class="bar-letter">-</div>
+               <div class="bar-ipa">/${raw}/</div>
+               <div class="bar-score ${colorClass}">${Math.round(score)}</div>
+            `;
+          div.onclick = () => playPhoneme(raw, raw);
+          barsContainer.appendChild(div);
+        });
+      }
+    }
+
+
+    /* ===== Recording Logic (Independent) ===== */
+    if (recordBtn) {
       recordBtn.onclick = async () => {
-        // 适配逻辑：如果是 Android 或 PC 端的 Anki 内嵌环境，执行逃逸跳转
-        if (!isIOS && (isWebView || isAnkiPC) && !recording) {
-          logDebug("触发环境逃逸跳转 (PC/Android)...");
-          statusLabel.innerText = "正在尝试打开外部浏览器...";
-          const externalUrl = window.location.href;
-
-          // 尝试多种逃逸方式
-          const win = window.open(externalUrl, "_blank");
-          if (!win || win.closed || typeof win.closed === 'undefined') {
-            // 如果被拦截，引导用户点击
-            statusLabel.innerHTML = `<a href="${externalUrl}" target="_blank" style="color:#3A66B8;text-decoration:underline;">录音权限受阻，请点击此处并在浏览器中打开</a>`;
-          } else {
-            location.href = externalUrl; // 物理重定向作为兜底
-            statusLabel.innerText = "请在外部浏览器中操作";
-          }
-          return;
-        }
-
         if (!recording) {
           await startRecord();
         } else {
@@ -941,13 +541,14 @@
         }
       };
     }
+
     async function startRecord() {
       if (recording) return;
-      logDebug("正在启动录音...");
 
       try {
         await initAudioContext();
         if (!recStream) {
+          // Android/PC Chrome 录音，无需 iframe 跨域担忧
           recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
 
@@ -967,46 +568,29 @@
 
         recording = true;
         recordBtn.classList.add("recording");
-        statusLabel.innerText = "正在录制...";
-        if (recording) {
-          const channelData = e.inputBuffer.getChannelData(0);
-          recBuffer.push(new Float32Array(channelData));
-          logDebug(`[Live] 采集音频分片: ${channelData.length} samples`);
-        }
-      };
+        statusLabel.innerText = "正在录制... (点击停止)";
 
-      input.connect(processor);
-      processor.connect(audioContext.destination);
-
-      recording = true;
-      recordBtn.classList.add("recording");
-      statusLabel.innerText = "正在录制...";
-      logDebug("PCM 直接采集已启动", "ok");
-
-      window.recStream = stream;
-      window.recProcessor = processor;
-      window.recInput = input;
-    } catch (e) {
-      logDebug(`初始化失败: ${e.message}`, "err");
-      alert("无法启动录音: " + e.message);
-    }
+      } catch (e) {
+        console.error("Mic error", e);
+        alert("无法启动录音: " + e.message);
+      }
     }
 
     function stopRecord() {
       if (!recording) return;
-      logDebug("停止采样，开始构建 WAV...");
-      const startTime = Date.now();
       recording = false;
       recordBtn.classList.remove("recording");
+      statusLabel.innerText = "正在评分...";
 
       if (recProcessor) recProcessor.disconnect();
+
       // V85: 彻底停止麦克风
       if (recStream) {
         recStream.getTracks().forEach(t => t.stop());
         recStream = null;
       }
 
-      // 合并 PCM 数据并生成 WAV
+      // Merge & Encode
       const totalLen = recBuffer.reduce((acc, b) => acc + b.length, 0);
       const flatBuffer = new Float32Array(totalLen);
       let offset = 0;
@@ -1019,16 +603,10 @@
       lastRecordedBlob = wavBlob;
       playbackBtn.disabled = false;
 
-      logDebug(`本地处理完成: ${Date.now() - startTime}ms`, "ok");
-      logDebug(`音频包大小: ${wavBlob.size} bytes`, "ok");
-
       sendCheck(wavBlob);
-      // V82: 这里不再 close，防止后续 Ctx 被挂起
-      // if (audioContext) audioContext.close();
     }
 
     function encodeWAVFromFloat(samples) {
-      // V83: 基于 audioContext.sampleRate 动态生成的 WAV 头部
       const sampleRate = audioContext ? audioContext.sampleRate : 16000;
       const buffer = new ArrayBuffer(44 + samples.length * 2);
       const view = new DataView(buffer);
@@ -1037,195 +615,20 @@
       writeString(view, 8, 'WAVE');
       writeString(view, 12, 'fmt ');
       view.setUint32(16, 16, true);
-      view.setUint16(20, 1, true); // PCM
-      view.setUint16(22, 1, true); // Mono
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
       view.setUint32(24, sampleRate, true);
       view.setUint32(28, sampleRate * 2, true);
       view.setUint16(32, 2, true);
       view.setUint16(34, 16, true);
       writeString(view, 36, 'data');
       view.setUint32(40, samples.length * 2, true);
-      let offset = 44;
-      for (let i = 0; i < samples.length; i++, offset += 2) {
+      let off = 44;
+      for (let i = 0; i < samples.length; i++, off += 2) {
         let s = Math.max(-1, Math.min(1, samples[i]));
-        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
       }
       return new Blob([buffer], { type: 'audio/wav' });
-    }
-
-    // 🎤 环境识别与全局状态 (已提升至顶部)
-
-    if (isExternalControl) {
-      if (recordBtn) recordBtn.style.display = 'none';
-      if (statusLabel) statusLabel.innerText = "等待 Anki 录音...";
-    }
-
-    // 👂 全局消息监听器
-    window.addEventListener('message', event => {
-      const msg = event.data;
-      if (!msg || !msg.type) return;
-
-      logToScreen(`📨 收到消息: ${msg.type}`);
-
-      // 1. 接收评测结果 (从 Anki 发送)
-      if (msg.type === 'ASSESSMENT_RESULT') {
-        logToScreen("✅ 收到评测结果，开始渲染...", "in");
-        const payload = msg.payload || msg; // 兼容写法
-
-        // 检查数据结构并适配
-        let adaptedData = null;
-        if (payload.nbest) {
-          adaptedData = payload.nbest;
-        } else if (payload.PronunciationAssessment && payload.Words) {
-          adaptedData = payload;
-        } else if (payload.success === true || payload.pronunciation !== undefined) {
-          // 适配简化版的成功返回
-          logToScreen("ℹ️ 识别到简化版数据格式");
-          adaptedData = {
-            PronunciationAssessment: {
-              AccuracyScore: payload.pronunciation || payload.score || 0,
-              CompletenessScore: 100,
-              FluencyScore: 100,
-              PronScore: payload.pronunciation || payload.score || 0
-            },
-            Words: payload.phonemes ? [{
-              Word: targetWord,
-              PronunciationAssessment: { AccuracyScore: payload.pronunciation || 0 },
-              Phonemes: payload.phonemes.map(p => ({
-                Phoneme: p.Phoneme || p.phoneme || "?",
-                PronunciationAssessment: { AccuracyScore: p.AccuracyScore || p.score || 0 }
-              }))
-            }] : []
-          };
-        } else {
-          logToScreen("⚠️ 无法识别的数据结构，尝试强制渲染", "err");
-          // 万能适配器
-          adaptedData = {
-            PronunciationAssessment: { AccuracyScore: payload.score || 0 },
-            Words: []
-          };
-        }
-
-        try {
-          renderResult(adaptedData);
-          logToScreen("🎉 渲染完成");
-        } catch (e) {
-          logToScreen("❌ 渲染代码崩溃: " + e.message, "err");
-        }
-
-        if (statusLabel) statusLabel.style.display = 'none';
-      }
-
-      // 2. 接收状态更新 (从 Anki 发送)
-      if (msg.type === 'ASSESSMENT_STATUS') {
-        const statusText = document.getElementById('status');
-        if (statusText && msg.status) {
-          statusText.innerText = msg.status;
-          logToScreen(`📊 状态更新: ${msg.status}`);
-        }
-      }
-
-      // 3. 播放Anki音频
-      if (msg.type === 'PLAY_ANKI_AUDIO') {
-        const audioTags = document.getElementsByTagName('audio');
-        for (let i = 0; i < audioTags.length; i++) {
-          if (audioTags[i].src.indexOf(msg.filename) !== -1) {
-            audioTags[i].currentTime = 0;
-            audioTags[i].play();
-            break;
-          }
-        }
-      }
-    });
-
-    // 按钮事件绑定
-    stdWordBtn.onclick = () => {
-      if (userAudio) {
-        window.parent.postMessage({ type: 'PLAY_ANKI_AUDIO', filename: userAudio }, '*');
-        stdWordBtn.style.transform = "scale(0.95)";
-        setTimeout(() => stdWordBtn.style.transform = "scale(1)", 150);
-      } else {
-        fallbackStandardPlay();
-      }
-    };
-
-    playbackBtn.onclick = async () => {
-      if (lastRecordedBlob) {
-        logDebug("🔊 正在回放我的发音 (Base64 加固版)...");
-        // V82: 弃用 ObjectURL，改用 FileReader 转 base64 确保 iOS/Android 兼容
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const base64Audio = e.target.result;
-          const audio = new Audio(base64Audio);
-          try {
-            await audio.play();
-          } catch (err) {
-            logToScreen(`回放失败: ${err.message}`, "err");
-            // 兜底：如果直接 play 受阻，尝试在 document 上制造一个用户交互
-            alert("请点击确定以开始回放");
-            audio.play();
-          }
-        };
-        reader.readAsDataURL(lastRecordedBlob);
-      } else {
-        logToScreen("⚠️ 尚未录制音频", "err");
-      }
-    };
-
-    function fallbackStandardPlay() {
-      const currentIpa = ipaEl ? ipaEl.innerText.replace(/[\/\[\]\s]+/g, '').trim() : "";
-      if (currentIpa) {
-        playPhoneme(currentIpa, targetWord);
-      } else {
-        playStandardText(targetWord);
-      }
-    }
-
-    async function playStandardText(text) {
-      try {
-        const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-          <voice name="en-US-ChristopherNeural">
-            <prosody volume="+30.00%">${text}</prosody>
-          </voice>
-        </speak>`;
-        const res = await fetch(window.location.origin + "/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ssml })
-        });
-        if (res.ok) {
-          const blob = await res.blob();
-          const audio = new Audio(URL.createObjectURL(blob));
-          audio.play();
-        }
-      } catch (e) {
-        console.error("Standard TTS Error", e);
-      }
-    }
-
-    async function sendCheck(blob) {
-      const startTime = Date.now();
-      logDebug(`发起请求: /assess (Word: ${targetWord})`);
-      try {
-        const formData = new FormData();
-        formData.append('audio', blob, 'speech.wav');
-        formData.append('word', targetWord);
-
-        const res = await fetch('/assess', {
-          method: "POST",
-          body: formData
-        });
-        const data = await res.json();
-        if (data.success && data.nbest) {
-          logDebug("测评成功");
-          statusLabel.innerText = "测评完成";
-          renderResult(data.nbest);
-        } else {
-          logDebug("测评失败: " + (data.message || "原因未知"), "err");
-        }
-      } catch (e) {
-        logDebug(`通讯失败: ${e.message}`, "err");
-      }
     }
 
     function writeString(view, offset, string) {
@@ -1234,7 +637,36 @@
       }
     }
 
-    logDebug("主逻辑已绑定，排障模式就绪", "ok");
+    async function sendCheck(blob) {
+      try {
+        const formData = new FormData();
+        formData.append('audio', blob, 'speech.wav');
+        formData.append('word', targetWord);
+
+        const res = await fetch('/assess', { method: "POST", body: formData });
+        const data = await res.json();
+        if (data.success && data.nbest) {
+          statusLabel.innerText = "测评完成";
+          renderResult(data.nbest);
+        } else {
+          statusLabel.innerText = "测评失败: " + (data.message || "未知原因");
+        }
+      } catch (e) {
+        statusLabel.innerText = "网络错误";
+      }
+    }
+
+    /* ===== Playback (Base64) ===== */
+    playbackBtn.onclick = async () => {
+      if (lastRecordedBlob) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const audio = new Audio(e.target.result);
+          try { await audio.play(); } catch (err) { alert("回放失败，请点击页面重试"); }
+        };
+        reader.readAsDataURL(lastRecordedBlob);
+      }
+    };
   </script>
 </body>
 
