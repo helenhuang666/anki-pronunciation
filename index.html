@@ -387,12 +387,12 @@
       const match = txt.match(/PhonemeTips\s*=\s*({[\s\S]*});/);
       if (match) PhonemeTips = eval('(' + match[1] + ')');
 
-      // V76: 补全音位变体提示
+      // V77: 补全音位变体提示 (根据用户最新指令精修)
       const allophoneExtensions = {
-        "l_light": "【清晰 l 】出现在词首或元音前，发音类似“勒”。",
-        "l_dark": "【暗 l】出现在词尾或辅音后，发音类似“噢”，舌尖抵住上齿龈但不发声。",
-        "r_initial": "【卷舌 r 】出现在词首或重读位置，嘴唇微圆，舌尖卷起。",
-        "r_final": "【弱化 r】出现在词尾或元音后，在美音中表现为儿化音，英音中常弱化。"
+        "l_light": "【清晰 l 】出现在词首或元音前。",
+        "l_dark": "【暗 l】出现在词尾或辅音后。",
+        "r_initial": "【卷舌 r 】出现在词首或重读位置。",
+        "r_final": "【弱化 r】出现在词尾或元音后。"
       };
       PhonemeTips = { ...PhonemeTips, ...allophoneExtensions };
 
@@ -791,32 +791,31 @@
 
     /* ===== TTS & Tips ===== */
     async function playPhoneme(ttsIpa, displayPhoneme, meta = {}) {
-      const cleanKey = displayPhoneme.replace(/[()]/g, '').trim();
+      // V77: 录音文件 Key 提取逻辑
+      // 直接使用 ttsIpa 的首个部分作为音频名和提示词的 Key (它在 getStandardIpa 中已算好变体)
+      const tipKey = ttsIpa.split(' ')[0].trim();
+      const cleanDisplay = displayPhoneme.replace(/[()]/g, '').trim();
 
-      // 同位音逻辑判定
-      let tipKey = cleanKey;
-      if (cleanKey === "l") {
-        tipKey = meta.isFinal ? "l_dark" : "l_light";
-      } else if (cleanKey === "r") {
-        tipKey = meta.isFinal ? "r_final" : "r";
-      }
+      logDebug(`[AUDIO] 尝试播放变体 Key: ${tipKey}, 显示词: ${cleanDisplay}`);
 
-      // 显示中文提示
-      const tip = PhonemeTips[tipKey] || PhonemeTips[cleanKey] || PhonemeTips[cleanKey.split(' ')[0]];
+      // 1. 显示中文提示 (变体优先)
+      const tip = PhonemeTips[tipKey] || PhonemeTips[cleanDisplay] || PhonemeTips[cleanDisplay.split(' ')[0]];
       if (tip) {
         tipBox.style.display = "block";
         tipBox.innerText = `/${displayPhoneme}/ : ${tip}`;
       }
 
-      // 播放静态音频
-      // 这里的音频文件名与 tipKey 保持一致，例如 l_light.mp3, i.mp3 等
+      // 2. 播放参考音频
       const audioUrl = `/audio/phoneme/${tipKey}.mp3`;
-
       const audio = new Audio(audioUrl);
+
       audio.onerror = async () => {
-        console.warn(`[AUDIO] 静态音频 ${audioUrl} 未找到，尝试使用 TTS 备份。`);
-        // 如果静态资源未准备好，作为开发期过渡，可以暂时保留 TTS 兜底（或直接报错提示）
-        await playPhonemeTTS(ttsIpa);
+        logToScreen(`ℹ️ 静态音频 ${tipKey}.mp3 未命中，回退到 TTS`);
+        // 对 ttsIpa 进行 IPA 降级映射 (例如 l_light -> l)，防止 Azure SSML 报错
+        const fallbackIpa = ttsIpa
+          .replace(/l_(light|dark)/g, 'l')
+          .replace(/r_(initial|final)/g, 'r');
+        await playPhonemeTTS(fallbackIpa);
       };
 
       try {
