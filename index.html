@@ -353,9 +353,8 @@
   </div>
 
   <script>
-    // ===== V85: 独立版 index.html (Android/PC 跳转落地页) =====
+    // ===== index.html V87: 修复版 + 高级音素对齐 =====
 
-    function logToScreen(msg) { /* No-op */ }
     function logDebug(msg) { console.log(msg); }
 
     let PhonemeTips = {};
@@ -379,7 +378,6 @@
     if (isAnkiPC) document.body.classList.add("pc-mode");
     document.body.classList.add("loaded");
 
-    // V80: 处理汉译驱动显示
     const targetWord = decodeURIComponent(params.get("word") || "Apple");
     const targetTrans = decodeURIComponent(params.get("trans") || params.get("translations") || targetWord);
     const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
@@ -388,7 +386,6 @@
     const ipaDisplayEl = document.getElementById("target-ipa");
     const hintBtn = document.getElementById("web-hint-btn");
 
-    // 网页模式逻辑 (因为 index.html 必定是跳转出来的，所以总是 Non-ExternalControl)
     if (wordDisplayEl) {
       wordDisplayEl.innerText = targetTrans;
       wordDisplayEl.style.display = "block";
@@ -398,7 +395,7 @@
       hintBtn.onclick = async () => {
         hintBtn.style.display = "none";
         if (ipaDisplayEl) {
-          ipaDisplayEl.innerText = `/${userIpa.replace(/\//g, '')}/`; // 纯净显示
+          ipaDisplayEl.innerText = `/${userIpa.replace(/\//g, '')}/`;
           ipaDisplayEl.style.display = "block";
         }
       };
@@ -431,20 +428,82 @@
     const playbackBtn = document.getElementById("playbackBtn");
     const statusLabel = document.getElementById("status");
 
-    /* ===== Render Logic ===== */
+    /* ===== Render Logic with AI Alignment (V87 Port) ===== */
     const tipBox = document.getElementById("tip-box");
 
-    function getStandardIpa(word, rawPhoneme, idx, arr) {
-      let displayPh = rawPhoneme;
-      let ttsIpa = rawPhoneme;
-      // V84 简单策略：仅映射核心音位
-      if (word.endsWith('le') || word.endsWith('al') || word.endsWith('el')) {
-        if (rawPhoneme.includes('l')) {
-          displayPh = 'l_dark';
-          ttsIpa = 'l_Dark';
+    function getStandardIpa(pObj, index, allPhonemes) {
+      if (!pObj) return { display: "", tts: "" };
+      const code = (pObj.Phoneme || "").toLowerCase();
+      // V87: 简单映射，详细逻辑在 alignLettersToPhonemes 中处理
+      let displayPh = code;
+      let ttsIpa = code;
+
+      // Azure Arpabet 映射 (简化版)
+      const ARPABET_MAP = {
+        "ax": "ə", "er": "ɜːr", "axr": "ər", "ih": "ɪ", "iy": "i", "eh": "e",
+        "ae": "æ", "aa": "ɑ", "ao": "ɔ", "uh": "ʊ", "uw": "u", "ay": "aɪ",
+        "ey": "eɪ", "oy": "ɔɪ", "aw": "aʊ", "ow": "oʊ", "sh": "ʃ", "zh": "ʒ",
+        "ch": "tʃ", "jh": "dʒ", "th": "θ", "dh": "ð", "ng": "ŋ", "hh": "h"
+      };
+      displayPh = ARPABET_MAP[code] || code;
+
+      return { display: displayPh, tts: code };
+    }
+
+    /* ===== A.I. Alignment Engine (Ported from pro_eval V87) ===== */
+    const DIGRAPHS = ["ai", "ay", "ea", "ee", "ei", "ey", "ie", "oa", "oe", "oi", "oo", "ou", "oy", "ui", "au", "aw", "ch", "sh", "th", "wh", "ph", "ng", "nk", "ck", "kn", "wr", "gh", "gu", "tr", "dr", "ts", "ds", "pp", "tt", "bb", "dd", "ff", "gg", "mm", "nn", "rr", "ss", "ll", "zz", "cc"];
+    const TRIGRAPHS = ["ght", "tch", "dge", "iou"];
+
+    function alignLettersToPhonemes(word, phonemes) {
+      const letters = word.toLowerCase();
+      const pCount = phonemes.length;
+      let letterIndex = 0;
+      const phObjects = phonemes.map((p, idx) => {
+        const info = getStandardIpa(p, idx, phonemes);
+        return { display: info.display, tts: info.tts, score: p.PronunciationAssessment?.AccuracyScore || 0, raw: p };
+      });
+      const finalGroups = [];
+
+      for (let i = 0; i < pCount; i++) {
+        let curr = phObjects[i];
+        while (letterIndex < letters.length && !/[a-z]/.test(letters[letterIndex])) letterIndex++;
+        let curChar = (letterIndex < letters.length) ? letters[letterIndex] : "";
+        let groupLetters = curChar;
+        let displayIpa = curr.display;
+        let ttsIpa = curr.tts;
+        let totalScore = curr.score;
+
+        let nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
+
+        // 1. 合并逻辑 (简单复刻 pro_eval)
+        if ((curChar === 'x' && (curr.display === 'k' || curr.display === 'g') && nextPh && (nextPh.display === 's' || nextPh.display === 'z')) ||
+          (curChar === 'u' && curr.display === 'j' && nextPh && nextPh.display.includes('u')) ||
+          (letters.endsWith('le') && letterIndex >= letters.length - 2 && curr.display === 'ə' && nextPh && nextPh.display === 'l')) {
+          displayIpa += nextPh.display; ttsIpa += " " + nextPh.tts; totalScore = (totalScore + nextPh.score) / 2;
+          i++;
         }
+
+        // 2. 切块大小
+        let chunkSize = 1;
+        if (letterIndex + 3 <= letters.length && TRIGRAPHS.includes(letters.substr(letterIndex, 3))) chunkSize = 3;
+        else if (letterIndex + 2 <= letters.length && DIGRAPHS.includes(letters.substr(letterIndex, 2))) chunkSize = 2;
+
+        groupLetters = word.substr(letterIndex, chunkSize);
+        letterIndex += chunkSize;
+
+        // 3. 静音字母吸收 (简化版)
+        while (letterIndex < letters.length) {
+          let peek = letters[letterIndex];
+          if (!/[a-z]/.test(peek)) { groupLetters += word[letterIndex]; letterIndex++; continue; }
+          // 简单规则：e 结尾且无从属音素
+          if (peek === 'e' && i === pCount - 1) { groupLetters += peek; letterIndex++; }
+          else break;
+        }
+
+        finalGroups.push({ letters: groupLetters, displayPh: displayIpa, ttsIpa: ttsIpa, score: totalScore });
       }
-      return { display: displayPh, tts: ttsIpa };
+      if (letterIndex < letters.length) finalGroups[finalGroups.length - 1].letters += word.substr(letterIndex);
+      return finalGroups;
     }
 
     async function playPhonemeTTS(ttsIpa) {
@@ -467,7 +526,6 @@
       let cleanDisplay = displayPhoneme.replace(/_initial|_final|_light|_dark/g, '').replace('l_dark', 'l');
       // Tip Logic
       let tipKey = displayPhoneme;
-      if (tipKey === 'l') tipKey = 'l_light';
 
       const tip = PhonemeTips[tipKey] || PhonemeTips[cleanDisplay];
       if (tip && tipBox) {
@@ -475,7 +533,6 @@
         tipBox.innerText = `/${displayPhoneme}/ : ${tip}`;
       }
 
-      // Play Logic
       await playPhonemeTTS(ttsIpa);
     }
 
@@ -497,39 +554,41 @@
       mainScoreEl.innerHTML = Math.round(mainScore) + '<span class="score-unit">分</span>';
 
       let stars = "★★★★★";
-      if (mainScore < 20) stars = "<span class='gray'>★★★★★</span>";
-      else if (mainScore < 40) stars = "★<span class='gray'>★★★★</span>";
+      if (mainScore < 40) stars = "★<span class='gray'>★★★★</span>";
       else if (mainScore < 60) stars = "★★<span class='gray'>★★★</span>";
       else if (mainScore < 80) stars = "★★★<span class='gray'>★★</span>";
       else if (mainScore < 90) stars = "★★★★<span class='gray'>★</span>";
-      else stars = "★★★★★";
+
       starsEl.innerHTML = stars;
 
-      // Render Bars
+      // V87: Advanced Rendering with AI Alignment
       if (wordObj.Phonemes) {
-        wordObj.Phonemes.forEach((ph, i) => {
-          const raw = ph.Phoneme;
-          const score = ph.PronunciationAssessment.AccuracyScore;
-          const div = document.createElement("div");
-          div.className = "bar-group";
-          div.style.marginBottom = "10px";
+        try {
+          // V87: 调用核心对齐算法
+          const alignedData = alignLettersToPhonemes(targetWord, wordObj.Phonemes);
 
-          // 颜色
-          let colorClass = "bg-poor";
-          if (score >= 80) colorClass = "bg-good";
-          else if (score >= 60) colorClass = "bg-fair";
+          alignedData.forEach(group => {
+            const div = document.createElement("div");
+            div.className = "bar-group";
+            div.style.marginBottom = "10px";
 
-          div.innerHTML = `
-               <div class="bar-letter">-</div>
-               <div class="bar-ipa">/${raw}/</div>
-               <div class="bar-score ${colorClass}">${Math.round(score)}</div>
-            `;
-          div.onclick = () => playPhoneme(raw, raw);
-          barsContainer.appendChild(div);
-        });
+            let s = group.score;
+            let colorClass = s >= 80 ? "bg-good" : (s >= 60 ? "bg-fair" : "bg-poor");
+
+            div.innerHTML = `
+                   <div class="bar-letter">${group.letters}</div>
+                   <div class="bar-ipa">/${group.displayPh}/</div>
+                   <div class="bar-score ${colorClass}">${Math.round(s)}</div>
+                `;
+            div.onclick = () => playPhoneme(group.ttsIpa, group.displayPh);
+            barsContainer.appendChild(div);
+          });
+        } catch (e) {
+          console.error("Align Error", e);
+          barsContainer.innerHTML = `<div style='color:red; font-size:12px'>渲染错误: ${e.message}</div>`;
+        }
       }
     }
-
 
     /* ===== Recording Logic (Independent) ===== */
     if (recordBtn) {
@@ -548,7 +607,6 @@
       try {
         await initAudioContext();
         if (!recStream) {
-          // Android/PC Chrome 录音，无需 iframe 跨域担忧
           recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
 
@@ -558,8 +616,7 @@
 
         recProcessor.onaudioprocess = e => {
           if (recording) {
-            const channelData = e.inputBuffer.getChannelData(0);
-            recBuffer.push(new Float32Array(channelData));
+            recBuffer.push(new Float32Array(e.inputBuffer.getChannelData(0)));
           }
         };
 
@@ -584,7 +641,7 @@
 
       if (recProcessor) recProcessor.disconnect();
 
-      // V85: 彻底停止麦克风
+      // V85 Fix: 彻底停止麦克风
       if (recStream) {
         recStream.getTracks().forEach(t => t.stop());
         recStream = null;
@@ -599,6 +656,7 @@
         offset += b.length;
       }
 
+      // V86: AudioContext 已强制 16000Hz
       const wavBlob = encodeWAVFromFloat(flatBuffer);
       lastRecordedBlob = wavBlob;
       playbackBtn.disabled = false;
@@ -607,7 +665,7 @@
     }
 
     function encodeWAVFromFloat(samples) {
-      const sampleRate = audioContext ? audioContext.sampleRate : 16000;
+      const sampleRate = 16000; // Hardcoded matches Ctx
       const buffer = new ArrayBuffer(44 + samples.length * 2);
       const view = new DataView(buffer);
       writeString(view, 0, 'RIFF');
@@ -656,7 +714,6 @@
       }
     }
 
-    /* ===== Playback (Base64) ===== */
     playbackBtn.onclick = async () => {
       if (lastRecordedBlob) {
         const reader = new FileReader();
