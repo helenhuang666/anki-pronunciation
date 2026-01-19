@@ -386,7 +386,17 @@
       // 简单解析 exports
       const match = txt.match(/PhonemeTips\s*=\s*({[\s\S]*});/);
       if (match) PhonemeTips = eval('(' + match[1] + ')');
-      logToScreen("✅ 音标提示库已加载");
+
+      // V76: 补全音位变体提示
+      const allophoneExtensions = {
+        "l_light": "【清晰 l 】出现在词首或元音前，发音类似“勒”。",
+        "l_dark": "【暗 l】出现在词尾或辅音后，发音类似“噢”，舌尖抵住上齿龈但不发声。",
+        "r_initial": "【卷舌 r 】出现在词首或重读位置，嘴唇微圆，舌尖卷起。",
+        "r_final": "【弱化 r】出现在词尾或元音后，在美音中表现为儿化音，英音中常弱化。"
+      };
+      PhonemeTips = { ...PhonemeTips, ...allophoneExtensions };
+
+      logToScreen("✅ 音标提示库已加载并补全");
     }).catch(e => logToScreen("❌ 提示库加载失败", "err"));
 
     const params = new URLSearchParams(window.location.search);
@@ -669,7 +679,7 @@
           // 场景 B: 辅音组合中的静音件 (如 gh)
           if (peekChar === 'g' && letters[letterIndex + 1] === 'h') {
             // 如果下一个音素不是 f (laugh) 或 g，则 gh 是静音的
-            if (!nextRealPh || (!nextRealPh.ipa.includes('f') && !nextRealPh.ipa.includes('g'))) {
+            if (!nextRealPh || (!nextRealPh.display.includes('f') && !nextRealPh.display.includes('g'))) {
               groupLetters += word.substr(letterIndex, 2);
               letterIndex += 2;
               continue;
@@ -681,7 +691,7 @@
           if ("aeiou".includes(peekChar) && remainingPh > 0) {
             // 启发式：如果后续字母能完美匹配下一个音素，则当前元音被视为静音吸收
             let nextLetter = letters[letterIndex + 1];
-            if (nextLetter && nextRealPh && nextRealPh.ipa.startsWith(nextLetter)) {
+            if (nextLetter && nextRealPh && nextRealPh.display.startsWith(nextLetter)) {
               isSilentCandidate = true;
             }
           }
