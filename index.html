@@ -93,7 +93,24 @@
 
     #target-ipa {
       display: none;
-      /* 隐藏音标，卡片已显示 */
+      font-size: 18px;
+      color: #3A66B8;
+      opacity: 0.8;
+      margin-top: 4px;
+      font-family: "Lucida Sans Unicode", "Arial Unicode MS", sans-serif;
+    }
+
+    .hint-btn {
+      background: #3A66B8;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      padding: 6px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 10px;
+      box-shadow: 0 4px 8px rgba(58, 102, 184, 0.2);
     }
 
     /* ===== Total Score & Stars ===== */
@@ -318,7 +335,8 @@
 
 
     <!-- Header Word & IPA -->
-    <div id="target-word">Apple</div>
+    <div id="target-word" style="font-size: 24px;">汉译加载中...</div>
+    <button id="web-hint-btn" class="hint-btn">提示</button>
     <div id="target-ipa"></div>
 
     <!-- Score Header -->
@@ -435,21 +453,34 @@
     if (isAnkiPC) document.body.classList.add("pc-mode");
     document.body.classList.add("loaded");
 
-    // V78: 根据环境决定是否显示单词/音标
+    // V80: 处理汉译驱动显示
+    const targetWord = decodeURIComponent(params.get("word") || "Apple");
+    const targetTrans = decodeURIComponent(params.get("trans") || params.get("translations") || targetWord);
+    const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
+
     const wordDisplayEl = document.getElementById("target-word");
     const ipaDisplayEl = document.getElementById("target-ipa");
+    const hintBtn = document.getElementById("web-hint-btn");
+
     if (!isExternalControl) {
-      // 跳转后的网页模式 -> 显示
-      if (wordDisplayEl) wordDisplayEl.style.display = "block";
-      if (ipaDisplayEl) ipaDisplayEl.style.display = "block";
+      // 网页模式：显示汉译，隐藏音标由按钮控制
+      if (wordDisplayEl) {
+        wordDisplayEl.innerText = targetTrans;
+        wordDisplayEl.style.display = "block";
+      }
+      if (hintBtn) {
+        hintBtn.style.display = "inline-block";
+        hintBtn.onclick = () => {
+          hintBtn.style.display = "none";
+          if (ipaDisplayEl) ipaDisplayEl.style.display = "block";
+        };
+      }
     } else {
-      // Anki 嵌入模式 -> 隐藏
+      // Anki 模式：全隐藏
       if (wordDisplayEl) wordDisplayEl.style.display = "none";
+      if (hintBtn) hintBtn.style.display = "none";
       if (ipaDisplayEl) ipaDisplayEl.style.display = "none";
     }
-
-    const targetWord = decodeURIComponent(params.get("word") || "Apple");
-    const userIpa = decodeURIComponent(params.get("phonetic") || params.get("USPhonetic") || params.get("usphonetic") || params.get("us") || params.get("ipa") || "");
     let userAudio = decodeURIComponent(params.get("audio") || params.get("audio_file") || params.get("USAudio") || params.get("usaudio") || "");
 
     // ===== 🛠️ 关键修复：解析音频 HTML 标签 =====
