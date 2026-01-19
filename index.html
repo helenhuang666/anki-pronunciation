@@ -340,9 +340,6 @@
   <!-- Bottom Controls -->
   <div class="controls" id="controls-section">
     <div class="btn-row" id="recording-controls">
-      <!-- 标准发音按钮 (左) -->
-      <button id="stdWordBtn" class="playback-btn" style="background:#3A66B8;">标准发音</button>
-
       <!-- 核心录音按钮 (中) -->
       <button id="recordBtn" class="mic-button">
         <svg viewBox="0 0 24 24">
@@ -438,7 +435,7 @@
     if (isAnkiPC) document.body.classList.add("pc-mode");
     document.body.classList.add("loaded");
 
-    // V72: 根据环境决定是否显示单词/音标
+    // V78: 根据环境决定是否显示单词/音标
     const wordDisplayEl = document.getElementById("target-word");
     const ipaDisplayEl = document.getElementById("target-ipa");
     if (!isExternalControl) {
@@ -792,9 +789,13 @@
     /* ===== TTS & Tips ===== */
     async function playPhoneme(ttsIpa, displayPhoneme, meta = {}) {
       // V77: 录音文件 Key 提取逻辑
-      // 直接使用 ttsIpa 的首个部分作为音频名和提示词的 Key (它在 getStandardIpa 中已算好变体)
-      const tipKey = ttsIpa.split(' ')[0].trim();
+      // V78: 特殊处理 (ə)l -> l_dark
+      let tipKey = ttsIpa.split(' ')[0].trim();
       const cleanDisplay = displayPhoneme.replace(/[()]/g, '').trim();
+
+      if (displayPhoneme.includes("(ə)l") || displayPhoneme === "əl") {
+        tipKey = "l_dark";
+      }
 
       logDebug(`[AUDIO] 尝试播放变体 Key: ${tipKey}, 显示词: ${cleanDisplay}`);
 
@@ -1139,13 +1140,6 @@
     }
 
     logDebug("主逻辑已绑定，排障模式就绪", "ok");
-    // V72: 页面加载后自动播放标准发音 (仅在非静音或用户预期下)
-    setTimeout(() => {
-      if (stdWordBtn) {
-        console.log("🔊 V72: 自动播放标准发音");
-        stdWordBtn.click();
-      }
-    }, 1000);
   </script>
 </body>
 
