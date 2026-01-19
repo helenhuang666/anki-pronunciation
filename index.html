@@ -522,18 +522,47 @@
       } catch (e) { console.error("TTS Error", e); }
     }
 
+    /* ===== TTS & Tips (Ported from pro_eval V88) ===== */
     window.playPhoneme = async (ttsIpa, displayPhoneme) => {
-      let cleanDisplay = displayPhoneme.replace(/_initial|_final|_light|_dark/g, '').replace('l_dark', 'l');
-      // Tip Logic
-      let tipKey = displayPhoneme;
+      // Logic: 1. Tip Key Extraction 2. Static Audio 3. TTS Fallback
 
-      const tip = PhonemeTips[tipKey] || PhonemeTips[cleanDisplay];
-      if (tip && tipBox) {
-        tipBox.style.display = 'block';
-        tipBox.innerText = `/${displayPhoneme}/ : ${tip}`;
+      let tipKey = ttsIpa.split(' ')[0].trim();
+      const cleanDisplay = displayPhoneme.replace(/[()]/g, '').trim();
+
+      // Special handling for dark l
+      if (displayPhoneme.includes("(ə)l") || displayPhoneme === "əl") {
+        tipKey = "l_dark";
       }
 
-      await playPhonemeTTS(ttsIpa);
+      console.log(`[AUDIO] Attempting Key: ${tipKey}, Display: ${cleanDisplay}`);
+
+      // 1. Show Tip
+      const tip = PhonemeTips[tipKey] || PhonemeTips[cleanDisplay] || PhonemeTips[cleanDisplay.split(' ')[0]];
+      if (tip) {
+        if (tipBox) {
+          tipBox.style.display = "block";
+          tipBox.innerText = `/${displayPhoneme}/ : ${tip}`;
+        }
+      }
+
+      // 2. Play Static Audio
+      const audioUrl = `/audio/phoneme/${tipKey}.mp3`;
+      const audio = new Audio(audioUrl);
+
+      audio.onerror = async () => {
+        console.log(`ℹ️ Static audio ${tipKey}.mp3 not found, falling back to TTS`);
+        // Fallback: Degrade IPA for Azure TTS (remove custom suffixes)
+        const fallbackIpa = ttsIpa
+          .replace(/l_(light|dark)/g, 'l')
+          .replace(/r_(initial|final)/g, 'r');
+        await playPhonemeTTS(fallbackIpa);
+      };
+
+      try {
+        await audio.play();
+      } catch (err) {
+        console.error("Audio playback error", err);
+      }
     }
 
     function renderResult(nbest) {
