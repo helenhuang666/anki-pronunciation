@@ -939,7 +939,7 @@
         const input = audioContext.createMediaStreamSource(stream);
         // 4096 对于 16k 采样率约 250ms 一次回调
         const processor = audioContext.createScriptProcessor(4096, 1, 1);
-        recBuffer = [];
+        recBuffer = []; // 显式清空，确保 V82 回放全新
 
         processor.onaudioprocess = e => {
           if (recording) {
@@ -994,7 +994,8 @@
       logDebug(`音频包大小: ${wavBlob.size} bytes`, "ok");
 
       sendCheck(wavBlob);
-      if (audioContext) audioContext.close();
+      // V82: 这里不再 close，防止后续 Ctx 被挂起
+      // if (audioContext) audioContext.close();
     }
 
     function encodeWAVFromFloat(samples) {
@@ -1119,16 +1120,24 @@
 
     playbackBtn.onclick = async () => {
       if (lastRecordedBlob) {
-        logDebug("🔊 正在回放我的发音...");
-        // 尝试使用 AudioContext 播放或强制触发 play
-        const url = URL.createObjectURL(lastRecordedBlob);
-        const audio = new Audio(url);
-        audio.onended = () => URL.revokeObjectURL(url);
-        try {
-          await audio.play();
-        } catch (e) {
-          logToScreen(`回放失败: ${e.message}`, "err");
-        }
+        logDebug("🔊 正在回放我的发音 (Base64 加固版)...");
+        // V82: 弃用 ObjectURL，改用 FileReader 转 base64 确保 iOS/Android 兼容
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const base64Audio = e.target.result;
+          const audio = new Audio(base64Audio);
+          try {
+            await audio.play();
+          } catch (err) {
+            logToScreen(`回放失败: ${err.message}`, "err");
+            // 兜底：如果直接 play 受阻，尝试在 document 上制造一个用户交互
+            alert("请点击确定以开始回放");
+            audio.play();
+          }
+        };
+        reader.readAsDataURL(lastRecordedBlob);
+      } else {
+        logToScreen("⚠️ 尚未录制音频", "err");
       }
     };
 
