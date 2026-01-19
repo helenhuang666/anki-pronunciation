@@ -431,23 +431,45 @@
     /* ===== Render Logic with AI Alignment (V87 Port) ===== */
     const tipBox = document.getElementById("tip-box");
 
+    /* ===== Mapping Engine (Ported from pro_eval V89) ===== */
+    const ARPABET_TO_IPA = {
+      "ae": "æ", "ax": "ə", "ah": "ʌ", "aa": "ɑ", "ao": "ɔ", "ih": "ɪ", "eh": "e", "iy": "i", "uh": "ʊ", "uw": "u",
+      "er": "ɜːr", "axr": "ər", "ey": "eɪ", "ay": "aɪ", "oy": "ɔɪ", "aw": "aʊ", "ow": "oʊ",
+      "p": "p", "b": "b", "t": "t", "d": "d", "k": "k", "g": "g", "f": "f", "v": "v", "th": "θ", "dh": "ð",
+      "s": "s", "z": "z", "sh": "ʃ", "zh": "ʒ", "ch": "tʃ", "jh": "dʒ", "m": "m", "n": "n", "ng": "ŋ", "l": "l", "r": "r", "w": "w", "y": "j", "hh": "h"
+    };
+
+    const VOWELS = ["ae", "ax", "ah", "aa", "ao", "ih", "eh", "iy", "uh", "uw", "er", "axr", "ey", "ay", "oy", "aw", "ow"];
+
     function getStandardIpa(pObj, index, allPhonemes) {
       if (!pObj) return { display: "", tts: "" };
+      if (pObj.IPA) return { display: pObj.IPA, tts: pObj.IPA };
       const code = (pObj.Phoneme || "").toLowerCase();
-      // V87: 简单映射，详细逻辑在 alignLettersToPhonemes 中处理
-      let displayPh = code;
-      let ttsIpa = code;
 
-      // Azure Arpabet 映射 (简化版)
-      const ARPABET_MAP = {
-        "ax": "ə", "er": "ɜːr", "axr": "ər", "ih": "ɪ", "iy": "i", "eh": "e",
-        "ae": "æ", "aa": "ɑ", "ao": "ɔ", "uh": "ʊ", "uw": "u", "ay": "aɪ",
-        "ey": "eɪ", "oy": "ɔɪ", "aw": "aʊ", "ow": "oʊ", "sh": "ʃ", "zh": "ʒ",
-        "ch": "tʃ", "jh": "dʒ", "th": "θ", "dh": "ð", "ng": "ŋ", "hh": "h"
-      };
-      displayPh = ARPABET_MAP[code] || code;
+      const phArr = allPhonemes || [];
+      const idx = (index !== undefined) ? index : -1;
+      const stdIpa = ARPABET_TO_IPA[code] || code;
 
-      return { display: displayPh, tts: code };
+      // Special l/r Handling
+      if (code === "l") {
+        const nextPh = (idx >= 0 && idx + 1 < phArr.length) ? phArr[idx + 1] : null;
+        const isFollowedByVowel = nextPh && VOWELS.includes(nextPh.Phoneme.toLowerCase());
+        return {
+          display: "l",
+          tts: (isFollowedByVowel || idx === 0) ? "l_light" : "l_dark"
+        };
+      }
+      if (code === "r") {
+        const prevPh = (idx >= 1) ? phArr[idx - 1] : null;
+        const isPrecededByVowel = prevPh && VOWELS.includes(prevPh.Phoneme.toLowerCase());
+        return {
+          display: "r",
+          tts: (isPrecededByVowel || idx === phArr.length - 1) ? "r_final" : "r_initial"
+        };
+      }
+
+      // Critical V89 Fix: Return mapped IPA for TTS, not the raw Arpabet code
+      return { display: stdIpa, tts: stdIpa };
     }
 
     /* ===== A.I. Alignment Engine (Ported from pro_eval V87) ===== */
