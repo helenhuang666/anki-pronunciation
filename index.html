@@ -757,6 +757,23 @@
         if (data.success && data.nbest) {
           statusLabel.innerText = "测评完成";
           renderResult(data.nbest);
+
+          // Android Bridge: Report Result
+          const sessionId = params.get("session_id");
+          if (sessionId) {
+            const score = data.nbest.PronunciationAssessment.AccuracyScore;
+            fetch("/api/report_result", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ session_id: sessionId, score: score })
+            }).then(() => {
+              logDebug("Session result reported");
+              // Optional: Show feedback
+              const st = document.getElementById("status");
+              if (st) st.innerText += " (已同步)";
+            }).catch(e => console.error("Report failed", e));
+          }
+
         } else {
           statusLabel.innerText = "测评失败: " + (data.message || "未知原因");
         }
