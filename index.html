@@ -288,9 +288,16 @@
     }
 
     .mic-button.recording {
-      background-color: #ff5252;
-      box-shadow: 0 0 0 6px rgba(255, 82, 82, 0.3);
+      background-color: transparent;
+      /* V97 */
+      border: 1px solid #ff5252;
+      color: #ff5252;
+      box-shadow: 0 0 0 4px rgba(255, 82, 82, 0.1);
       animation: pulse 1.5s infinite;
+    }
+
+    .mic-button.recording svg {
+      fill: #ff5252;
     }
 
     .status-text {
