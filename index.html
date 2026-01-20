@@ -473,7 +473,8 @@
     }
 
     /* ===== A.I. Alignment Engine (Ported from pro_eval V87) ===== */
-    const DIGRAPHS = ["ai", "ay", "ea", "ee", "ei", "ey", "ie", "oa", "oe", "oi", "oo", "ou", "oy", "ui", "au", "aw", "ch", "sh", "th", "wh", "ph", "ng", "nk", "ck", "kn", "wr", "gh", "gu", "tr", "dr", "ts", "ds", "pp", "tt", "bb", "dd", "ff", "gg", "mm", "nn", "rr", "ss", "ll", "zz", "cc"];
+    // V93 Fix: User correction - 'ia', 'io', 'ua' are digraphs in suffixes (benefic-ia-l), not ci/ti/si.
+    const DIGRAPHS = ["ai", "ay", "ea", "ee", "ei", "ey", "ie", "oa", "oe", "oi", "oo", "ou", "oy", "ui", "au", "aw", "ch", "sh", "th", "wh", "ph", "ng", "nk", "ck", "kn", "wr", "gh", "gu", "tr", "dr", "ts", "ds", "pp", "tt", "bb", "dd", "ff", "gg", "mm", "nn", "rr", "ss", "ll", "zz", "cc", "ia", "io", "ua"];
     const TRIGRAPHS = ["ght", "tch", "dge", "iou"];
 
     function alignLettersToPhonemes(word, phonemes) {
