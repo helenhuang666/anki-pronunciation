@@ -307,6 +307,26 @@ app.get("/api/check_status", (req, res) => {
   }
 });
 
+// ===== Keep-Alive Mechanism for Render (V99.1) =====
+app.get("/health", (req, res) => res.status(200).send("OK"));
+
+// Fix: Use Hardcoded URL if ENV is missing (Smart Default)
+const APP_URL = process.env.EXTERNAL_APP_URL || "https://anki-pronunciation.onrender.com";
+
+if (APP_URL) {
+  const keepAliveUrl = APP_URL.endsWith('/')
+    ? APP_URL + 'health'
+    : APP_URL + '/health';
+
+  console.log(`[Keep-Alive] Configured to ping: ${keepAliveUrl}`);
+
+  setInterval(() => {
+    fetch(keepAliveUrl)
+      .then(res => console.log(`[Keep-Alive] Pinged ${keepAliveUrl}: ${res.status}`))
+      .catch(err => console.error(`[Keep-Alive] Ping failed:`, err.message));
+  }, 14 * 60 * 1000); // 14 minutes
+}
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   const key = process.env.AZURE_KEY;
