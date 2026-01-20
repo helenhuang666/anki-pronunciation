@@ -498,10 +498,21 @@
         let nextPh = (i + 1 < pCount) ? phObjects[i + 1] : null;
 
         // 1. 合并逻辑 (简单复刻 pro_eval)
+        // User Request V91: "le" pronounced as /əl/ should be /(ə)l/
+        // User Request V91: "al" should NOT be grouped (Removed potential al logic if any)
         if ((curChar === 'x' && (curr.display === 'k' || curr.display === 'g') && nextPh && (nextPh.display === 's' || nextPh.display === 'z')) ||
           (curChar === 'u' && curr.display === 'j' && nextPh && nextPh.display.includes('u')) ||
           (letters.endsWith('le') && letterIndex >= letters.length - 2 && curr.display === 'ə' && nextPh && nextPh.display === 'l')) {
-          displayIpa += nextPh.display; ttsIpa += " " + nextPh.tts; totalScore = (totalScore + nextPh.score) / 2;
+
+          if (letters.endsWith('le') && curChar === 'l') { // Safety check for le
+            displayIpa = "(ə)l";
+            ttsIpa += " " + nextPh.tts;
+          } else {
+            displayIpa += nextPh.display;
+            ttsIpa += " " + nextPh.tts;
+          }
+
+          totalScore = (totalScore + nextPh.score) / 2;
           i++;
         }
 
