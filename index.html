@@ -54,9 +54,12 @@
     .playback-btn {
       flex: 1;
       height: 48px;
-      background-color: #3A66B8;
-      color: white;
-      border: none;
+      background-color: transparent;
+      /* V95 */
+      color: #3A66B8;
+      /* V95 */
+      border: 1px solid #3A66B8;
+      /* V95 */
       border-radius: 24px;
       font-size: 16px;
       font-weight: bold;
@@ -100,9 +103,12 @@
     }
 
     .hint-btn {
-      background: #3A66B8;
-      color: white;
-      border: none;
+      background: transparent;
+      /* V95 */
+      color: #3A66B8;
+      /* V95 */
+      border: 1px solid #3A66B8;
+      /* V95 */
       border-radius: 20px;
       padding: 6px 18px;
       font-size: 14px;
@@ -256,8 +262,10 @@
       flex: 1;
       height: 48px;
       border-radius: 24px;
-      background-color: #3A66B8;
-      border: none;
+      background-color: transparent;
+      /* V95 */
+      border: 1px solid #3A66B8;
+      /* V95 */
       display: flex;
       justify-content: center;
       align-items: center;
@@ -265,7 +273,8 @@
       cursor: pointer;
       transition: all 0.2s;
       -webkit-tap-highlight-color: transparent;
-      color: white;
+      color: #3A66B8;
+      /* V95 */
       font-weight: bold;
       font-size: 16px;
       gap: 8px;
@@ -274,7 +283,8 @@
     .mic-button svg {
       width: 20px;
       height: 20px;
-      fill: white;
+      fill: #3A66B8;
+      /* V95 */
     }
 
     .mic-button.recording {
@@ -336,7 +346,7 @@
     <div class="btn-row" id="recording-controls">
       <!-- 回放发音按钮 (左) -->
       <button id="playbackBtn" class="playback-btn" disabled>
-        <span>👂 回放</span>
+        <span>▶️ 回放</span>
       </button>
 
       <!-- 核心录音按钮 (右) -->
